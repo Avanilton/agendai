@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Calendar as CalendarIcon,
-  CalendarClock,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -34,6 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
+import { AgendaTimeGrid } from "@/components/agenda/time-grid";
 
 export interface AgendaAppointmentRow {
   id: string;
@@ -136,7 +136,21 @@ function formatReadableDate(dateKey: string): string {
   }).format(d);
 }
 
-function formatWeekDayHeader(dateKey: string): string {
+function formatMonthYear(dateKey: string): string {
+  const d = new Date(`${dateKey}T12:00:00-03:00`);
+  const raw = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    month: "long",
+    year: "numeric",
+  }).format(d);
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function getDayCardParts(dateKey: string): {
+  weekday: string;
+  day: string;
+  month: string;
+} {
   const d = new Date(`${dateKey}T12:00:00-03:00`);
   const parts = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo",
@@ -144,10 +158,33 @@ function formatWeekDayHeader(dateKey: string): string {
     day: "2-digit",
     month: "short",
   }).formatToParts(d);
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
-  const day = parts.find((p) => p.type === "day")?.value ?? "";
-  const month = parts.find((p) => p.type === "month")?.value ?? "";
-  return `${weekday}, ${day} ${month}`;
+  return {
+    weekday: (parts.find((p) => p.type === "weekday")?.value ?? "")
+      .replace(".", "")
+      .toUpperCase(),
+    day: parts.find((p) => p.type === "day")?.value ?? "",
+    month: (parts.find((p) => p.type === "month")?.value ?? "").replace(".", ""),
+  };
+}
+
+function getMonthCalendarCells(dateKey: string): {
+  dateKey: string;
+  inCurrentMonth: boolean;
+}[] {
+  const [y, m] = dateKey.split("-").map(Number);
+  const firstOfMonth = new Date(Date.UTC(y!, m! - 1, 1, 15, 0, 0));
+  const startDow = firstOfMonth.getUTCDay(); // 0 = Dom
+  const firstKey = `${y}-${String(m).padStart(2, "0")}-01`;
+  const gridStart = addDays(firstKey, -startDow);
+  const currentMonthPrefix = `${y}-${String(m).padStart(2, "0")}-`;
+
+  return Array.from({ length: 42 }, (_, i) => {
+    const dk = addDays(gridStart, i);
+    return {
+      dateKey: dk,
+      inCurrentMonth: dk.startsWith(currentMonthPrefix),
+    };
+  });
 }
 
 function formatWeekRange(dates: string[]): string {
@@ -201,7 +238,7 @@ export function AgendaManager({
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
-    if (view !== "week") return;
+    if (view === "list") return;
     const el = weekContainerRef.current;
     if (!el) return;
 
@@ -319,16 +356,12 @@ export function AgendaManager({
     return Array.from({ length: 7 }, (_, i) => addDays(selectedDate, sundayOffset + i));
   }, [selectedDate]);
 
-  const monthDates = useMemo(() => {
-    const [y, m] = selectedDate.split("-").map(Number);
-    const daysInMonth = new Date(y!, m!, 0).getDate();
-    return Array.from({ length: daysInMonth }, (_, i) => {
-      const day = String(i + 1).padStart(2, "0");
-      return `${y}-${String(m).padStart(2, "0")}-${day}`;
-    });
-  }, [selectedDate]);
+  const monthCalendarCells = useMemo(
+    () => getMonthCalendarCells(selectedDate),
+    [selectedDate]
+  );
 
-  function openCreate() {
+  function openCreate(presetDate?: string, presetStartTime?: string) {
     setEditingId(null);
     const firstSvc = services[0];
     setForm({
@@ -338,8 +371,8 @@ export function AgendaManager({
           ? professionalFilter
           : professionals[0]?.id ?? "",
       serviceIds: firstSvc ? [firstSvc.id] : [],
-      date: selectedDate,
-      startTime: "09:00",
+      date: presetDate || selectedDate,
+      startTime: presetStartTime || "09:00",
       durationMinutes: firstSvc ? firstSvc.durationMinutes + firstSvc.bufferMinutes : 30,
       totalPriceReais: firstSvc ? firstSvc.priceCents / 100 : 0,
       status: "waiting",
@@ -679,7 +712,7 @@ export function AgendaManager({
           </Button>
 
           {canWrite && (
-            <Button size="sm" onClick={openCreate}>
+            <Button size="sm" onClick={() => openCreate()}>
               <Plus className="h-4 w-4" />
               Novo agendamento
             </Button>
@@ -711,44 +744,20 @@ export function AgendaManager({
         </Card>
       )}
 
-      {/* DAY VIEW */}
-      {view === "day" && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-[#64748B]">
-              {formatReadableDate(selectedDate)} ({dayAppointments.length} agendamentos)
-            </h2>
-          </div>
-
-          {dayAppointments.length === 0 ? (
-            <Card className="border-dashed">
-              <CardContent className="flex flex-col items-center py-12 text-center">
-                <CalendarClock className="h-10 w-10 text-[#2563EB]" />
-                <p className="mt-3 font-bold text-[#142B4F]">
-                  Nenhum agendamento para este dia
-                </p>
-                <p className="mt-1 text-xs text-[#64748B]">
-                  Clique em &quot;Novo agendamento&quot; para preencher a agenda.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {dayAppointments.map(renderAppointmentCard)}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* WEEK VIEW */}
-      {view === "week" && (
-        <div className="space-y-3">
+      {/* INTERACTIVE WEEK DAY STRIP (visible in Dia, Semana & Mês) */}
+      {view !== "list" && (
+        <div className="space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-bold uppercase tracking-wide text-[#64748B]">
-              Semana: {formatWeekRange(weekDates)}
-            </h2>
-            <p className="text-xs text-[#64748B]">
-              Arraste com o mouse, deslize com o dedo ou role a roda do mouse para trocar de semana
+            <div>
+              <h2 className="text-base font-extrabold text-[#142B4F]">
+                {formatMonthYear(selectedDate)}
+              </h2>
+              <p className="text-xs text-[#64748B]">
+                Semana: {formatWeekRange(weekDates)}
+              </p>
+            </div>
+            <p className="text-[11px] text-[#64748B]">
+              Arraste com o mouse, deslize com o dedo ou role a roda para trocar de semana
             </p>
           </div>
 
@@ -772,57 +781,55 @@ export function AgendaManager({
           >
             <div
               className={cn(
-                "grid grid-cols-1 gap-3 md:grid-cols-7",
+                "grid grid-cols-7 gap-2",
                 !isDragging && "transition-transform duration-200 ease-out"
               )}
               style={{
-                transform: dragOffset !== 0 ? `translateX(${dragOffset}px)` : undefined,
+                transform:
+                  dragOffset !== 0 ? `translateX(${dragOffset}px)` : undefined,
               }}
             >
               {weekDates.map((dKey) => {
-                const list = filteredAppointments.filter(
+                const count = filteredAppointments.filter(
                   (a) => toLocalDateKey(a.startsAtIso) === dKey
-                );
+                ).length;
+                const { weekday, day, month } = getDayCardParts(dKey);
                 const isSelected = dKey === selectedDate;
+
                 return (
-                  <Card
+                  <button
                     key={dKey}
+                    type="button"
+                    onClick={() => setSelectedDate(dKey)}
                     className={cn(
-                      isSelected && "border-[#2563EB] ring-1 ring-[#2563EB]/30"
+                      "flex flex-col items-center justify-center rounded-xl border px-2 py-2.5 text-center transition-all cursor-pointer",
+                      isSelected
+                        ? "border-[#2563EB] bg-[#EAF2FF] text-[#2563EB] ring-1 ring-[#2563EB]/30"
+                        : "border-slate-200 bg-white text-[#142B4F] hover:border-[#2563EB]/50"
                     )}
                   >
-                    <CardContent className="p-3 space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedDate(dKey);
-                          setView("day");
-                        }}
-                        className="w-full text-left text-xs font-bold text-[#142B4F] hover:text-[#2563EB] cursor-pointer"
+                    <span className="text-[10px] font-bold tracking-wide opacity-75">
+                      {weekday}
+                    </span>
+                    <span className="mt-0.5 text-lg font-extrabold leading-none">
+                      {day}
+                    </span>
+                    <span className="mt-0.5 text-[10px] font-medium opacity-75">
+                      {month}
+                    </span>
+                    {count > 0 && (
+                      <span
+                        className={cn(
+                          "mt-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none",
+                          isSelected
+                            ? "bg-[#2563EB] text-white"
+                            : "bg-slate-100 text-[#142B4F]"
+                        )}
                       >
-                        {formatWeekDayHeader(dKey)}
-                      </button>
-                      {list.length === 0 ? (
-                        <p className="text-[11px] text-slate-400">Livre</p>
-                      ) : (
-                        list.map((a) => (
-                          <button
-                            key={a.id}
-                            type="button"
-                            onClick={() => openEdit(a)}
-                            className="w-full rounded-lg border border-slate-100 bg-[#F5F7FA] p-2 text-left hover:border-[#2563EB]/40 cursor-pointer"
-                          >
-                            <p className="text-[11px] font-bold text-[#142B4F]">
-                              {toLocalTime(a.startsAtIso)} • {a.clientName}
-                            </p>
-                            <p className="truncate text-[10px] text-[#64748B]">
-                              {a.professionalName}
-                            </p>
-                          </button>
-                        ))
-                      )}
-                    </CardContent>
-                  </Card>
+                        {count}
+                      </span>
+                    )}
+                  </button>
                 );
               })}
             </div>
@@ -830,38 +837,161 @@ export function AgendaManager({
         </div>
       )}
 
-      {/* MONTH VIEW */}
+      {/* DAY VIEW — Hourly Time Grid */}
+      {view === "day" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-[#64748B]">
+              Horários de {formatReadableDate(selectedDate)} ({dayAppointments.length} agendamentos)
+            </h3>
+          </div>
+
+          <AgendaTimeGrid
+            days={[selectedDate]}
+            selectedDate={selectedDate}
+            appointments={filteredAppointments}
+            scheduleBlocks={scheduleBlocks}
+            canWrite={canWrite}
+            onSelectDay={setSelectedDate}
+            onSlotClick={(dKey, startTime) => openCreate(dKey, startTime)}
+            onAppointmentClick={openEdit}
+          />
+
+          {dayAppointments.length > 0 && (
+            <div className="space-y-2.5 pt-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-[#64748B]">
+                Ações rápidas do dia
+              </p>
+              {dayAppointments.map(renderAppointmentCard)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* WEEK VIEW — 7-Column Hourly Time Grid */}
+      {view === "week" && (
+        <AgendaTimeGrid
+          days={weekDates}
+          selectedDate={selectedDate}
+          appointments={filteredAppointments}
+          scheduleBlocks={scheduleBlocks}
+          canWrite={canWrite}
+          onSelectDay={(dKey) => setSelectedDate(dKey)}
+          onSlotClick={(dKey, startTime) => openCreate(dKey, startTime)}
+          onAppointmentClick={openEdit}
+        />
+      )}
+
+      {/* MONTH VIEW — Calendar Grid + Selected Day Hourly Time Grid below */}
       {view === "month" && (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-7">
-          {monthDates.map((dKey) => {
-            const count = filteredAppointments.filter(
-              (a) => toLocalDateKey(a.startsAtIso) === dKey
-            ).length;
-            const dayNum = dKey.slice(8, 10);
-            return (
-              <button
-                key={dKey}
-                type="button"
-                onClick={() => {
-                  setSelectedDate(dKey);
-                  setView("day");
-                }}
-                className={cn(
-                  "flex flex-col items-start justify-between rounded-xl border bg-white p-3 text-left transition-all hover:border-[#2563EB] cursor-pointer min-h-[76px]",
-                  dKey === selectedDate ? "border-[#2563EB] bg-[#EAF2FF]/40" : "border-slate-200"
-                )}
-              >
-                <span className="text-xs font-bold text-[#142B4F]">{dayNum}</span>
-                {count > 0 ? (
-                  <Badge variant="default" className="text-[10px]">
-                    {count} agend.
-                  </Badge>
-                ) : (
-                  <span className="text-[10px] text-slate-400">—</span>
-                )}
-              </button>
-            );
-          })}
+        <div className="space-y-5">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <div className="grid grid-cols-7 border-b border-slate-200 bg-[#F5F7FA] text-center text-xs font-bold text-[#142B4F]">
+              {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((label) => (
+                <div
+                  key={label}
+                  className="border-r border-slate-200 py-2 last:border-r-0"
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7">
+              {monthCalendarCells.map(({ dateKey: dKey, inCurrentMonth }) => {
+                const dayAppts = filteredAppointments.filter(
+                  (a) => toLocalDateKey(a.startsAtIso) === dKey
+                );
+                const hasBlock = scheduleBlocks.some((b) => {
+                  const s = new Date(b.startsAtIso).getTime();
+                  const e = new Date(b.endsAtIso).getTime();
+                  const ds = new Date(`${dKey}T00:00:00-03:00`).getTime();
+                  const de = new Date(`${dKey}T23:59:59-03:00`).getTime();
+                  return e > ds && s < de;
+                });
+                const dayNum = Number(dKey.slice(8, 10));
+                const isSelected = dKey === selectedDate;
+
+                return (
+                  <button
+                    key={dKey}
+                    type="button"
+                    onClick={() => setSelectedDate(dKey)}
+                    className={cn(
+                      "flex min-h-[82px] flex-col items-stretch justify-start gap-1 border-b border-r border-slate-200 p-1.5 text-left transition-colors last:border-r-0 cursor-pointer sm:min-h-[96px] sm:p-2",
+                      isSelected
+                        ? "bg-[#EAF2FF]/70 ring-2 ring-inset ring-[#2563EB]"
+                        : inCurrentMonth
+                          ? "bg-white hover:bg-slate-50"
+                          : "bg-slate-50/70 text-slate-400 hover:bg-slate-100/70"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "self-end text-xs font-bold",
+                        isSelected
+                          ? "text-[#2563EB]"
+                          : inCurrentMonth
+                            ? "text-[#142B4F]"
+                            : "text-slate-400"
+                      )}
+                    >
+                      {dayNum}
+                    </span>
+
+                    {hasBlock && (
+                      <span className="truncate rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        BLOQ / FERIADO
+                      </span>
+                    )}
+
+                    {dayAppts.length === 1 && (
+                      <span className="truncate rounded bg-[#142B4F] px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        {toLocalTime(dayAppts[0]!.startsAtIso)}{" "}
+                        {dayAppts[0]!.clientName}
+                      </span>
+                    )}
+
+                    {dayAppts.length > 1 && (
+                      <span className="inline-flex w-fit rounded bg-[#2563EB] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        mais +{dayAppts.length}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Selected Day Hourly Schedule directly below Month grid */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-[#64748B]">
+                Horários de {formatReadableDate(selectedDate)} ({dayAppointments.length} agendamentos)
+              </h3>
+              {canWrite && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openCreate(selectedDate)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Agendar neste dia
+                </Button>
+              )}
+            </div>
+
+            <AgendaTimeGrid
+              days={[selectedDate]}
+              selectedDate={selectedDate}
+              appointments={filteredAppointments}
+              scheduleBlocks={scheduleBlocks}
+              canWrite={canWrite}
+              onSelectDay={setSelectedDate}
+              onSlotClick={(dKey, startTime) => openCreate(dKey, startTime)}
+              onAppointmentClick={openEdit}
+            />
+          </div>
         </div>
       )}
 

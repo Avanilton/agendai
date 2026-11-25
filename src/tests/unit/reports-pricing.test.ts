@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { calculateServicePricing } from "@/modules/reports/pricing";
+import {
+  calculateProductPricing,
+  calculateServicePricing,
+} from "@/modules/reports/pricing";
 import {
   escapeCsvCell,
   parseClientsCsvPreview,
@@ -47,6 +50,27 @@ describe("Pricing Calculator Engine", () => {
     });
 
     expect(out.isFeasible).toBe(false);
+  });
+
+  it("computes product pricing accurately with purchase, freight, and target margin", () => {
+    const out = calculateProductPricing({
+      purchaseCostReais: 40,
+      freightAndPackagingReais: 6,
+      variableCostReais: 2,
+      fixedCostPerUnitReais: 2,
+      taxPercent: 10,
+      commissionPercent: 10,
+      paymentFeePercent: 0,
+      desiredMarginPercent: 30,
+    });
+
+    // Total cost = 50, deductions = 20%, margin = 30% -> divisor = 0.50 -> recommended = 100
+    expect(out.isFeasible).toBe(true);
+    expect(out.totalCostReais).toBe(50);
+    expect(out.minimumPriceReais).toBe(62.5);
+    expect(out.recommendedPriceReais).toBe(100);
+    expect(out.estimatedProfitReais).toBe(30);
+    expect(out.realMarginPercent).toBe(30);
   });
 });
 
