@@ -26,10 +26,14 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      await authClient.requestPasswordReset({
+      const result = await authClient.requestPasswordReset({
         email: email.trim().toLowerCase(),
-        redirectTo: "/redefinir-senha",
+        redirectTo: `${window.location.origin}/redefinir-senha`,
       });
+      if (result.error && result.error.status >= 500) {
+        toast.error("Erro temporário ao enviar solicitação. Tente novamente.");
+        return;
+      }
       // Always show generic confirmation to prevent account enumeration
       setSent(true);
       toast.success("Instruções enviadas se o e-mail estiver cadastrado.");

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { authClient } from "@/lib/auth/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Card,
@@ -114,9 +115,8 @@ function SignUpForm() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 autoComplete="new-password"
                 placeholder="Mínimo 8 caracteres"
                 value={password}
@@ -128,9 +128,8 @@ function SignUpForm() {
 
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirmar senha</Label>
-              <Input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
                 autoComplete="new-password"
                 placeholder="Repita a senha"
                 value={confirmPassword}

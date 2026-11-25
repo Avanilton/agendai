@@ -7,20 +7,49 @@ export interface EmailPayload {
 
 /**
  * Transactional email adapter.
- * Phase 1 uses safe server-side structured logging in development.
- * Phase 5 will wire a managed transactional provider (e.g. Resend/SMTP) with queueing.
+ * Uses Resend HTTP API when RESEND_API_KEY is configured.
+ * Falls back to structured server-side console logging in development.
  */
 export async function sendTransactionalEmail(payload: EmailPayload): Promise<void> {
+  const resendApiKey = process.env.RESEND_API_KEY?.trim();
+  const from =
+    process.env.EMAIL_FROM?.trim() || "Agendai <onboarding@resend.dev>";
+
+  if (resendApiKey) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [payload.to],
+        subject: payload.subject,
+        text: payload.text,
+        html: payload.html,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "unknown error");
+      console.error(
+        `[Agendai Email] Resend API error (${response.status}): ${errorText}`
+      );
+      throw new Error("Falha ao enviar e-mail transacional.");
+    }
+
+    return;
+  }
+
   if (process.env.NODE_ENV !== "production") {
     console.info(
-      `[Agendai Email Dev] To: ${payload.to} | Subject: ${payload.subject}\n${payload.text}`
+      `\n================ [Agendai Email Dev] ================\nTo: ${payload.to}\nSubject: ${payload.subject}\n${payload.text}\n=====================================================\n`
     );
     return;
   }
 
-  // Production provider integration scheduled for Phase 5 (Comunicação)
   console.warn(
-    `[Agendai Email] Transactional provider not configured yet. Queued log for subject: ${payload.subject}`
+    `[Agendai Email] RESEND_API_KEY não configurada. E-mail não enviado para assunto: ${payload.subject}`
   );
 }
-

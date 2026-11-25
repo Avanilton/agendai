@@ -5,6 +5,7 @@ import {
   boolean,
   timestamp,
   integer,
+  bigint,
   index,
 } from "drizzle-orm/pg-core";
 
@@ -104,6 +105,6 @@ export const rateLimits = pgTable("rate_limits", {
   id: text("id").primaryKey(),
   key: text("key").notNull().unique(),
   count: integer("count").notNull().default(0),
-  lastRequest: integer("last_request").notNull(),
+  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
 });
 
