@@ -33,6 +33,8 @@ export default async function DashboardLayout({
       user={{
         name: tenantCtx.userName,
         email: tenantCtx.userEmail,
+        image: tenantCtx.userImage,
+        theme: tenantCtx.userTheme,
         roleName: tenantCtx.roleName,
         organizationName: tenantCtx.organizationName,
         organizationSlug: tenantCtx.organizationSlug,

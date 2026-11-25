@@ -15,6 +15,7 @@ import {
   Percent,
   QrCode,
   Scissors,
+  Settings,
   ShieldCheck,
   ShoppingBag,
   Truck,
@@ -22,7 +23,6 @@ import {
   Wallet,
 } from "lucide-react";
 import { requireTenantContext } from "@/lib/tenant/context";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -106,7 +106,7 @@ const QUICK_MODULES = [
   {
     title: "Integrações (Pix e NFS-e)",
     desc: "Pix Copia e Cola padrão BACEN e preparação fiscal NFS-e.",
-    href: "/app/integracoes",
+    href: "/app/configuracoes?tab=integracoes",
     icon: QrCode,
     permission: "financial:read",
   },
@@ -164,8 +164,7 @@ export default async function DashboardHomePage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <Badge variant="orange">Agendai SaaS — 12 Fases Ativas</Badge>
-          <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-[#142B4F] sm:text-3xl">
+          <h1 className="text-2xl font-extrabold tracking-tight text-[#142B4F] sm:text-3xl">
             Bem-vindo, {ctx.userName.split(" ")[0]}
           </h1>
           <p className="mt-1 text-sm text-[#64748B]">
@@ -174,9 +173,9 @@ export default async function DashboardHomePage() {
           </p>
         </div>
         <Button variant="outline" asChild>
-          <Link href="/app/seguranca">
-            <ShieldCheck className="h-4 w-4" />
-            Segurança e sessões
+          <Link href="/app/configuracoes">
+            <Settings className="h-4 w-4" />
+            Configurações
           </Link>
         </Button>
       </div>

@@ -60,6 +60,29 @@
   --radius: 0.75rem;
 }
 
+.dark {
+  --background: #0b1220;
+  --foreground: #f1f5f9;
+  --card: #111c32;
+  --card-foreground: #f1f5f9;
+  --popover: #111c32;
+  --popover-foreground: #f1f5f9;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #1e293b;
+  --secondary-foreground: #f1f5f9;
+  --muted: #162033;
+  --muted-foreground: #94a3b8;
+  --accent: #1e293b;
+  --accent-foreground: #f8fafc;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #1e293b;
+  --input: #334155;
+  --ring: #3b82f6;
+  color-scheme: dark;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -73,5 +96,66 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
+}
+
+/* Global Dark Mode surface overrides for existing light utility classes */
+.dark body {
+  background-color: #0b1220 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark .bg-\[\#F5F7FA\] {
+  background-color: #0b1220 !important;
+}
+
+.dark .bg-white {
+  background-color: #111c32 !important;
+}
+
+.dark .bg-slate-50 {
+  background-color: #162033 !important;
+}
+
+.dark .bg-\[\#EAF2FF\],
+.dark .bg-\[\#EAF2FF\]\/60,
+.dark .bg-\[\#EAF2FF\]\/40 {
+  background-color: rgba(37, 99, 235, 0.18) !important;
+}
+
+.dark .bg-\[\#FFF0E5\],
+.dark .bg-\[\#FFF0E5\]\/60 {
+  background-color: rgba(255, 145, 77, 0.14) !important;
+}
+
+.dark .text-\[\#142B4F\] {
+  color: #f1f5f9 !important;
+}
+
+.dark .text-\[\#64748B\] {
+  color: #94a3b8 !important;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-800,
+.dark .text-slate-900 {
+  color: #e2e8f0 !important;
+}
+
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300 {
+  border-color: #24324a !important;
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #0f172a !important;
+  color: #f1f5f9 !important;
+  border-color: #334155 !important;
+}
+
+.dark .hover\:bg-slate-100:hover {
+  background-color: #1e293b !important;
 }
 

@@ -17,6 +17,8 @@ export const users = pgTable(
     email: text("email").notNull().unique(),
     emailVerified: boolean("email_verified").notNull().default(false),
     image: text("image"),
+    theme: text("theme").notNull().default("light"),
+    defaultHomeRoute: text("default_home_route").notNull().default("/app"),
     isPlatformAdmin: boolean("is_platform_admin").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

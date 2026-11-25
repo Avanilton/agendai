@@ -30,6 +30,9 @@ export interface TenantContext {
   userId: string;
   userEmail: string;
   userName: string;
+  userImage: string | null;
+  userTheme: "light" | "dark";
+  userDefaultHomeRoute: string;
   isPlatformAdmin: boolean;
   sessionId: string;
   organizationId: string;
@@ -95,6 +98,9 @@ export async function requireTenantContext(): Promise<TenantContext> {
       id: users.id,
       email: users.email,
       name: users.name,
+      image: users.image,
+      theme: users.theme,
+      defaultHomeRoute: users.defaultHomeRoute,
       isPlatformAdmin: users.isPlatformAdmin,
     })
     .from(users)
@@ -171,6 +177,9 @@ export async function requireTenantContext(): Promise<TenantContext> {
     userId: dbUser.id,
     userEmail: dbUser.email,
     userName: dbUser.name,
+    userImage: dbUser.image,
+    userTheme: dbUser.theme === "dark" ? "dark" : "light",
+    userDefaultHomeRoute: dbUser.defaultHomeRoute || "/app",
     isPlatformAdmin: dbUser.isPlatformAdmin,
     sessionId: sessionData.session.id,
     organizationId: selected.organizationId,

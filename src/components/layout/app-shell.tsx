@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  ArrowDownUp,
   BarChart3,
   Briefcase,
   Building2,
@@ -16,12 +17,12 @@ import {
   Menu,
   MessageCircle,
   Package,
+  PanelLeftClose,
+  PanelLeftOpen,
   Percent,
-  QrCode,
   Scissors,
-  Shield,
+  Settings,
   ShoppingBag,
-  ArrowDownUp,
   Truck,
   Users,
   Wallet,
@@ -30,6 +31,7 @@ import {
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth/auth-client";
 import { AgendaiLogo } from "@/components/brand/agendai-logo";
+import { UserAvatar } from "@/components/settings/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -37,6 +39,8 @@ import { cn } from "@/lib/utils";
 export interface AppShellUser {
   name: string;
   email: string;
+  image?: string | null;
+  theme: "light" | "dark";
   roleName: string;
   organizationName: string;
   organizationSlug: string;
@@ -48,7 +52,6 @@ interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   requiredPermission?: string;
-  upcomingPhase?: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -155,17 +158,35 @@ const NAV_ITEMS: NavItem[] = [
     requiredPermission: "reports:read",
   },
   {
-    label: "Integrações (Pix/NFS-e)",
-    href: "/app/integracoes",
-    icon: QrCode,
-    requiredPermission: "financial:read",
-  },
-  {
-    label: "Segurança e Sessões",
-    href: "/app/seguranca",
-    icon: Shield,
+    label: "Configurações",
+    href: "/app/configuracoes",
+    icon: Settings,
   },
 ];
+
+const SIDEBAR_STORAGE_KEY = "agendai-sidebar-hidden";
+const SIDEBAR_EVENT = "agendai-sidebar-change";
+
+function subscribeSidebar(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener(SIDEBAR_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(SIDEBAR_EVENT, callback);
+  };
+}
+
+function getSidebarSnapshot(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function getSidebarServerSnapshot(): boolean {
+  return false;
+}
 
 export function AppShell({
   user,
@@ -177,11 +198,37 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const desktopSidebarHidden = useSyncExternalStore(
+    subscribeSidebar,
+    getSidebarSnapshot,
+    getSidebarServerSnapshot
+  );
   const [signingOut, setSigningOut] = useState(false);
+
+  // Sync user's DB theme preference to DOM & localStorage
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", user.theme === "dark");
+    try {
+      localStorage.setItem("agendai-theme", user.theme);
+    } catch {
+      // ignore storage errors
+    }
+  }, [user.theme]);
+
+  function toggleDesktopSidebar() {
+    const next = !desktopSidebarHidden;
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+      window.dispatchEvent(new Event(SIDEBAR_EVENT));
+    } catch {
+      // ignore
+    }
+  }
 
   const permissionSet = new Set(user.permissions);
   const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.requiredPermission || permissionSet.has(item.requiredPermission)
+    (item) =>
+      !item.requiredPermission || permissionSet.has(item.requiredPermission)
   );
 
   async function handleSignOut() {
@@ -200,7 +247,7 @@ export function AppShell({
   const sidebarContent = (
     <div className="flex h-full flex-col bg-[#142B4F] text-slate-200">
       <div className="flex h-16 items-center justify-between border-b border-white/10 px-5">
-        <Link href="/app" onClick={() => setSidebarOpen(false)}>
+        <Link href="/app/inicio" onClick={() => setSidebarOpen(false)}>
           <AgendaiLogo theme="dark" size="sm" />
         </Link>
         <button
@@ -231,10 +278,15 @@ export function AppShell({
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Menu do sistema">
+      <nav
+        className="flex-1 space-y-1 overflow-y-auto px-3 py-4"
+        aria-label="Menu do sistema"
+      >
         {visibleItems.map((item) => {
           const Icon = item.icon;
-          const active = pathname === item.href;
+          const active =
+            pathname === item.href ||
+            (item.href !== "/app" && pathname.startsWith(`${item.href}/`));
           return (
             <Link
               key={item.label}
@@ -244,33 +296,34 @@ export function AppShell({
                 "flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                 active
                   ? "bg-[#2563EB] text-white shadow-sm"
-                  : item.upcomingPhase
-                    ? "text-slate-400 hover:bg-white/5 hover:text-slate-200"
-                    : "text-slate-200 hover:bg-white/10 hover:text-white"
+                  : "text-slate-200 hover:bg-white/10 hover:text-white"
               )}
             >
               <span className="flex items-center gap-3 min-w-0">
                 <Icon className="h-4 w-4 shrink-0" />
                 <span className="truncate">{item.label}</span>
               </span>
-              {item.upcomingPhase && (
-                <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">
-                  {item.upcomingPhase}
-                </span>
-              )}
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer / Logout */}
-      <div className="border-t border-white/10 p-4">
-        <div className="mb-3 px-2">
-          <p className="truncate text-xs font-semibold text-white">
-            {user.name}
-          </p>
-          <p className="truncate text-[11px] text-slate-400">{user.email}</p>
-        </div>
+      {/* Footer / Profile link + Logout */}
+      <div className="border-t border-white/10 p-4 space-y-2">
+        <Link
+          href="/app/configuracoes?tab=perfil"
+          onClick={() => setSidebarOpen(false)}
+          className="flex items-center gap-2.5 rounded-xl px-2 py-2 transition-colors hover:bg-white/10"
+          title="Editar perfil e configurações"
+        >
+          <UserAvatar name={user.name} image={user.image} size="sm" />
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold text-white">
+              {user.name}
+            </p>
+            <p className="truncate text-[11px] text-slate-400">{user.email}</p>
+          </div>
+        </Link>
         <Button
           variant="ghost"
           onClick={handleSignOut}
@@ -287,9 +340,11 @@ export function AppShell({
   return (
     <div className="flex min-h-screen bg-[#F5F7FA]">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:fixed lg:inset-y-0 lg:z-40 lg:flex lg:w-64 lg:flex-col">
-        {sidebarContent}
-      </aside>
+      {!desktopSidebarHidden && (
+        <aside className="hidden lg:fixed lg:inset-y-0 lg:z-40 lg:flex lg:w-64 lg:flex-col">
+          {sidebarContent}
+        </aside>
+      )}
 
       {/* Mobile Drawer */}
       {sidebarOpen && (
@@ -306,17 +361,44 @@ export function AppShell({
       )}
 
       {/* Main Content */}
-      <div className="flex flex-1 flex-col lg:pl-64">
+      <div
+        className={cn(
+          "flex flex-1 flex-col transition-all duration-200",
+          desktopSidebarHidden ? "lg:pl-0" : "lg:pl-64"
+        )}
+      >
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6">
           <div className="flex items-center gap-3">
+            {/* Mobile menu button */}
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-[#142B4F] hover:bg-slate-100 lg:hidden"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-[#142B4F] hover:bg-slate-100 lg:hidden cursor-pointer"
               aria-label="Abrir menu lateral"
+              title="Abrir menu"
             >
               <Menu className="h-5 w-5" />
             </button>
+
+            {/* Desktop show/hide sidebar button */}
+            <button
+              type="button"
+              onClick={toggleDesktopSidebar}
+              className="hidden lg:inline-flex h-10 w-10 items-center justify-center rounded-lg text-[#142B4F] hover:bg-slate-100 cursor-pointer"
+              aria-label={
+                desktopSidebarHidden ? "Mostrar menu lateral" : "Esconder menu lateral"
+              }
+              title={
+                desktopSidebarHidden ? "Mostrar menu" : "Esconder menu"
+              }
+            >
+              {desktopSidebarHidden ? (
+                <PanelLeftOpen className="h-5 w-5" />
+              ) : (
+                <PanelLeftClose className="h-5 w-5" />
+              )}
+            </button>
+
             <div>
               <p className="text-sm font-bold text-[#142B4F]">
                 {user.organizationName}
@@ -328,12 +410,16 @@ export function AppShell({
           </div>
 
           <div className="flex items-center gap-3">
-            <Badge variant="default" className="hidden sm:inline-flex">
-              {user.roleName}
-            </Badge>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EAF2FF] text-sm font-bold text-[#2563EB]">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
+            <Link
+              href="/app/configuracoes?tab=perfil"
+              className="inline-flex items-center gap-2.5 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-slate-100"
+              title="Abrir perfil e configurações"
+            >
+              <Badge variant="default" className="hidden sm:inline-flex">
+                {user.roleName}
+              </Badge>
+              <UserAvatar name={user.name} image={user.image} size="md" />
+            </Link>
           </div>
         </header>
 
@@ -342,4 +428,3 @@ export function AppShell({
     </div>
   );
 }
-

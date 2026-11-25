@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -136,6 +136,38 @@ function formatReadableDate(dateKey: string): string {
   }).format(d);
 }
 
+function formatWeekDayHeader(dateKey: string): string {
+  const d = new Date(`${dateKey}T12:00:00-03:00`);
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  }).formatToParts(d);
+  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+  const day = parts.find((p) => p.type === "day")?.value ?? "";
+  const month = parts.find((p) => p.type === "month")?.value ?? "";
+  return `${weekday}, ${day} ${month}`;
+}
+
+function formatWeekRange(dates: string[]): string {
+  if (dates.length === 0) return "";
+  const first = new Date(`${dates[0]}T12:00:00-03:00`);
+  const last = new Date(`${dates[dates.length - 1]}T12:00:00-03:00`);
+  const startLabel = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "short",
+  }).format(first);
+  const endLabel = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(last);
+  return `${startLabel} – ${endLabel}`;
+}
+
 export function AgendaManager({
   initialAppointments,
   scheduleBlocks,
@@ -155,6 +187,97 @@ export function AgendaManager({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const weekContainerRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  }>({ active: false, startX: 0, startY: 0, moved: false });
+  const suppressClickRef = useRef(false);
+  const lastWheelAtRef = useRef(0);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    if (view !== "week") return;
+    const el = weekContainerRef.current;
+    if (!el) return;
+
+    function handleWheel(e: WheelEvent) {
+      const primaryDelta =
+        Math.abs(e.deltaX) >= Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (Math.abs(primaryDelta) < 18) return;
+
+      e.preventDefault();
+      const now = Date.now();
+      if (now - lastWheelAtRef.current < 320) return;
+      lastWheelAtRef.current = now;
+
+      setSelectedDate((d) => addDays(d, primaryDelta > 0 ? 7 : -7));
+    }
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", handleWheel);
+    };
+  }, [view]);
+
+  function handleWeekPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    dragStateRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false,
+    };
+  }
+
+  function handleWeekPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const state = dragStateRef.current;
+    if (!state.active) return;
+
+    const dx = e.clientX - state.startX;
+    const dy = e.clientY - state.startY;
+
+    if (!state.moved) {
+      if (Math.abs(dx) < 8) return;
+      if (Math.abs(dy) > Math.abs(dx)) {
+        state.active = false;
+        return;
+      }
+      state.moved = true;
+      setIsDragging(true);
+    }
+
+    const clamped = Math.max(-140, Math.min(140, dx));
+    setDragOffset(clamped);
+  }
+
+  function finishWeekDrag(e: React.PointerEvent<HTMLDivElement>) {
+    const state = dragStateRef.current;
+    if (!state.active) return;
+
+    const dx = e.clientX - state.startX;
+    const wasMoved = state.moved;
+
+    state.active = false;
+    state.moved = false;
+    setIsDragging(false);
+    setDragOffset(0);
+
+    if (wasMoved) {
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 60);
+
+      if (Math.abs(dx) >= 60) {
+        setSelectedDate((d) => addDays(d, dx < 0 ? 7 : -7));
+      }
+    }
+  }
 
   const [form, setForm] = useState({
     clientId: clients[0]?.id ?? "",
@@ -619,51 +742,91 @@ export function AgendaManager({
 
       {/* WEEK VIEW */}
       {view === "week" && (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-7">
-          {weekDates.map((dKey) => {
-            const list = filteredAppointments.filter(
-              (a) => toLocalDateKey(a.startsAtIso) === dKey
-            );
-            const isSelected = dKey === selectedDate;
-            return (
-              <Card
-                key={dKey}
-                className={cn(isSelected && "border-[#2563EB] ring-1 ring-[#2563EB]/30")}
-              >
-                <CardContent className="p-3 space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedDate(dKey);
-                      setView("day");
-                    }}
-                    className="w-full text-left text-xs font-bold text-[#142B4F] hover:text-[#2563EB] cursor-pointer"
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-[#64748B]">
+              Semana: {formatWeekRange(weekDates)}
+            </h2>
+            <p className="text-xs text-[#64748B]">
+              Arraste com o mouse, deslize com o dedo ou role a roda do mouse para trocar de semana
+            </p>
+          </div>
+
+          <div
+            ref={weekContainerRef}
+            onPointerDown={handleWeekPointerDown}
+            onPointerMove={handleWeekPointerMove}
+            onPointerUp={finishWeekDrag}
+            onPointerCancel={finishWeekDrag}
+            onPointerLeave={finishWeekDrag}
+            onClickCapture={(e) => {
+              if (suppressClickRef.current) {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }}
+            className={cn(
+              "overflow-hidden rounded-2xl touch-pan-y select-none",
+              isDragging ? "cursor-grabbing" : "cursor-grab"
+            )}
+          >
+            <div
+              className={cn(
+                "grid grid-cols-1 gap-3 md:grid-cols-7",
+                !isDragging && "transition-transform duration-200 ease-out"
+              )}
+              style={{
+                transform: dragOffset !== 0 ? `translateX(${dragOffset}px)` : undefined,
+              }}
+            >
+              {weekDates.map((dKey) => {
+                const list = filteredAppointments.filter(
+                  (a) => toLocalDateKey(a.startsAtIso) === dKey
+                );
+                const isSelected = dKey === selectedDate;
+                return (
+                  <Card
+                    key={dKey}
+                    className={cn(
+                      isSelected && "border-[#2563EB] ring-1 ring-[#2563EB]/30"
+                    )}
                   >
-                    {formatReadableDate(dKey).slice(0, 12)}
-                  </button>
-                  {list.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">Livre</p>
-                  ) : (
-                    list.map((a) => (
+                    <CardContent className="p-3 space-y-2">
                       <button
-                        key={a.id}
                         type="button"
-                        onClick={() => openEdit(a)}
-                        className="w-full rounded-lg border border-slate-100 bg-[#F5F7FA] p-2 text-left hover:border-[#2563EB]/40 cursor-pointer"
+                        onClick={() => {
+                          setSelectedDate(dKey);
+                          setView("day");
+                        }}
+                        className="w-full text-left text-xs font-bold text-[#142B4F] hover:text-[#2563EB] cursor-pointer"
                       >
-                        <p className="text-[11px] font-bold text-[#142B4F]">
-                          {toLocalTime(a.startsAtIso)} • {a.clientName}
-                        </p>
-                        <p className="truncate text-[10px] text-[#64748B]">
-                          {a.professionalName}
-                        </p>
+                        {formatWeekDayHeader(dKey)}
                       </button>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+                      {list.length === 0 ? (
+                        <p className="text-[11px] text-slate-400">Livre</p>
+                      ) : (
+                        list.map((a) => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => openEdit(a)}
+                            className="w-full rounded-lg border border-slate-100 bg-[#F5F7FA] p-2 text-left hover:border-[#2563EB]/40 cursor-pointer"
+                          >
+                            <p className="text-[11px] font-bold text-[#142B4F]">
+                              {toLocalTime(a.startsAtIso)} • {a.clientName}
+                            </p>
+                            <p className="truncate text-[10px] text-[#64748B]">
+                              {a.professionalName}
+                            </p>
+                          </button>
+                        ))
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
