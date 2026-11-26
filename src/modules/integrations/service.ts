@@ -167,6 +167,7 @@ export async function getGlobalAdminOverview() {
         segment: organizations.segment,
         status: organizations.status,
         createdAt: organizations.createdAt,
+        planId: plans.id,
         planName: plans.name,
       })
       .from(organizations)

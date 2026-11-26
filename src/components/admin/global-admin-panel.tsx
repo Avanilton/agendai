@@ -1,9 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, ShieldAlert, Users, Activity } from "lucide-react";
+import {
+  Activity,
+  Building2,
+  Loader2,
+  RefreshCw,
+  ShieldAlert,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
-import { adminToggleOrganizationStatusAction } from "@/modules/integrations/actions";
+import {
+  adminChangeOrganizationPlanAction,
+  adminToggleOrganizationStatusAction,
+} from "@/modules/integrations/actions";
 import { formatCurrencyBRL } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +33,7 @@ interface GlobalAdminPanelProps {
     slug: string;
     segment: string;
     status: string;
+    planId: string | null;
     planName: string | null;
     createdAtIso: string;
   }[];
@@ -42,6 +54,16 @@ export function GlobalAdminPanel({
   plans,
 }: GlobalAdminPanelProps) {
   const router = useRouter();
+  const [selectedPlanByOrg, setSelectedPlanByOrg] = useState<
+    Record<string, string>
+  >(() =>
+    Object.fromEntries(
+      organizations.map((org) => [org.id, org.planId ?? plans[0]?.id ?? ""])
+    )
+  );
+  const [changingPlanOrgId, setChangingPlanOrgId] = useState<string | null>(
+    null
+  );
 
   async function handleToggle(orgId: string, currentStatus: string) {
     const nextStatus = currentStatus === "suspended" ? "active" : "suspended";
@@ -53,6 +75,25 @@ export function GlobalAdminPanel({
     toast.success(
       nextStatus === "active" ? "Empresa ativada." : "Empresa suspensa."
     );
+    router.refresh();
+  }
+
+  async function handleChangePlan(orgId: string) {
+    const planId = selectedPlanByOrg[orgId];
+    if (!planId) {
+      toast.error("Selecione um plano.");
+      return;
+    }
+    setChangingPlanOrgId(orgId);
+    const res = await adminChangeOrganizationPlanAction(orgId, planId);
+    setChangingPlanOrgId(null);
+
+    if (!res.success) {
+      toast.error(res.error);
+      return;
+    }
+    const planName = plans.find((p) => p.id === planId)?.name ?? "selecionado";
+    toast.success(`Plano alterado para ${planName} (empresa ativada)!`);
     router.refresh();
   }
 
@@ -140,13 +181,47 @@ export function GlobalAdminPanel({
                 </p>
               </div>
 
-              <Button
-                size="sm"
-                variant={org.status === "suspended" ? "secondary" : "destructive"}
-                onClick={() => handleToggle(org.id, org.status)}
-              >
-                {org.status === "suspended" ? "Reativar" : "Suspender"}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={selectedPlanByOrg[org.id] ?? org.planId ?? ""}
+                  onChange={(e) =>
+                    setSelectedPlanByOrg((prev) => ({
+                      ...prev,
+                      [org.id]: e.target.value,
+                    }))
+                  }
+                  aria-label={`Selecionar plano para ${org.name}`}
+                  className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-medium text-[#142B4F]"
+                >
+                  {plans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.maxProfessionals} prof.)
+                    </option>
+                  ))}
+                </select>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={changingPlanOrgId === org.id}
+                  onClick={() => handleChangePlan(org.id)}
+                >
+                  {changingPlanOrgId === org.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Trocar plano
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant={org.status === "suspended" ? "secondary" : "destructive"}
+                  onClick={() => handleToggle(org.id, org.status)}
+                >
+                  {org.status === "suspended" ? "Reativar" : "Suspender"}
+                </Button>
+              </div>
             </div>
           ))}
         </CardContent>

@@ -3,7 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { fiscalProfiles, organizations, serviceInvoices } from "@/db/schema";
+import {
+  fiscalProfiles,
+  organizations,
+  plans,
+  serviceInvoices,
+  subscriptions,
+} from "@/db/schema";
 import {
   requirePermission,
   requirePlatformAdmin,
@@ -208,6 +214,83 @@ export async function adminToggleOrganizationStatusAction(
         error instanceof Error
           ? error.message
           : "Erro ao alterar status da organização.",
+    };
+  }
+}
+
+export async function adminChangeOrganizationPlanAction(
+  organizationId: string,
+  planId: string
+): Promise<ActionResult> {
+  try {
+    const admin = await requirePlatformAdmin();
+    const db = getDb();
+
+    const [targetPlan] = await db
+      .select({ id: plans.id, name: plans.name, slug: plans.slug })
+      .from(plans)
+      .where(eq(plans.id, planId))
+      .limit(1);
+
+    if (!targetPlan) {
+      return { success: false, error: "Plano selecionado não encontrado." };
+    }
+
+    const now = new Date();
+    const periodEnd = new Date(now);
+    periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+
+    const [existingSub] = await db
+      .select({ id: subscriptions.id })
+      .from(subscriptions)
+      .where(eq(subscriptions.organizationId, organizationId))
+      .limit(1);
+
+    if (existingSub) {
+      await db
+        .update(subscriptions)
+        .set({
+          planId: targetPlan.id,
+          status: "active",
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+          updatedAt: now,
+        })
+        .where(eq(subscriptions.id, existingSub.id));
+    } else {
+      await db.insert(subscriptions).values({
+        organizationId,
+        planId: targetPlan.id,
+        status: "active",
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
+      });
+    }
+
+    await db
+      .update(organizations)
+      .set({ status: "active", updatedAt: now })
+      .where(eq(organizations.id, organizationId));
+
+    await logAudit({
+      organizationId,
+      actorUserId: admin.id,
+      action: "platform_admin.org_plan_changed",
+      resourceType: "subscription",
+      resourceId: organizationId,
+      metadata: { planSlug: targetPlan.slug, planName: targetPlan.name },
+    });
+
+    revalidatePath("/admin");
+    revalidatePath("/app", "layout");
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Erro ao alterar plano da organização.",
     };
   }
 }
