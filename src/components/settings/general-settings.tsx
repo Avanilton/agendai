@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  Calendar,
   Check,
   CheckCircle2,
+  Download,
   Home,
   KeyRound,
   Loader2,
@@ -16,6 +18,8 @@ import {
   Sun,
   Upload,
   User,
+  Users,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth/auth-client";
@@ -53,6 +57,7 @@ type SettingsTab =
   | "preferencias"
   | "senha"
   | "integracoes"
+  | "exportacao"
   | "seguranca";
 
 interface GeneralSettingsProps {
@@ -72,16 +77,35 @@ interface GeneralSettingsProps {
     canWriteFinancial: boolean;
     canManageSettings: boolean;
   };
+  exportPermissions: {
+    canReadClients: boolean;
+    canReadFinancial: boolean;
+    canReadAppointments: boolean;
+  };
 }
 
-export function GeneralSettings({ user, integrations }: GeneralSettingsProps) {
+export function GeneralSettings({
+  user,
+  integrations,
+  exportPermissions,
+}: GeneralSettingsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTabParam = searchParams.get("tab") as SettingsTab | null;
 
-  const validTabs: SettingsTab[] = integrations.enabled
-    ? ["perfil", "preferencias", "senha", "integracoes", "seguranca"]
-    : ["perfil", "preferencias", "senha", "seguranca"];
+  const canExportAny =
+    exportPermissions.canReadClients ||
+    exportPermissions.canReadFinancial ||
+    exportPermissions.canReadAppointments;
+
+  const validTabs: SettingsTab[] = [
+    "perfil",
+    "preferencias",
+    "senha",
+    ...(integrations.enabled ? (["integracoes"] as const) : []),
+    ...(canExportAny ? (["exportacao"] as const) : []),
+    "seguranca",
+  ];
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(
     initialTabParam && validTabs.includes(initialTabParam)
@@ -252,8 +276,30 @@ export function GeneralSettings({ user, integrations }: GeneralSettingsProps) {
     ...(integrations.enabled
       ? [{ id: "integracoes" as const, label: "Integrações (Pix/NFS-e)", icon: QrCode }]
       : []),
+    ...(canExportAny
+      ? [{ id: "exportacao" as const, label: "Exportar Dados (CSV)", icon: Download }]
+      : []),
     { id: "seguranca", label: "Segurança e Sessões", icon: Shield },
   ];
+
+  function triggerExportAll() {
+    const types: string[] = [];
+    if (exportPermissions.canReadClients) types.push("clients");
+    if (exportPermissions.canReadFinancial) types.push("financial");
+    if (exportPermissions.canReadAppointments) types.push("open_appointments");
+
+    types.forEach((t, idx) => {
+      window.setTimeout(() => {
+        const a = document.createElement("a");
+        a.href = `/api/export?type=${t}`;
+        a.download = "";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }, idx * 450);
+    });
+    toast.success("Download dos arquivos CSV iniciado!");
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -601,6 +647,105 @@ export function GeneralSettings({ user, integrations }: GeneralSettingsProps) {
           canWriteFinancial={integrations.canWriteFinancial}
           canManageSettings={integrations.canManageSettings}
         />
+      )}
+
+      {/* TAB: EXPORTAR DADOS (CSV) */}
+      {activeTab === "exportacao" && canExportAny && (
+        <Card className="max-w-4xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Download className="h-5 w-5 text-[#2563EB]" />
+              Exportar Dados da Empresa (CSV)
+            </CardTitle>
+            <CardDescription>
+              Exporte todas as tabelas completas em formato CSV separado por vírgula (UTF-8, compatível com Excel e Google Sheets).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {exportPermissions.canReadClients && (
+                <div className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-[#F5F7FA] p-4 space-y-3">
+                  <div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2563EB]">
+                      <Users className="h-5 w-5" />
+                    </div>
+                    <h3 className="mt-3 text-sm font-bold text-[#142B4F]">
+                      Clientes
+                    </h3>
+                    <p className="mt-1 text-xs text-[#64748B]">
+                      Nome, CPF, telefone, WhatsApp, e-mail, nascimento, tags, origem e observações.
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" asChild>
+                    <a href="/api/export?type=clients" download>
+                      <Download className="h-3.5 w-3.5" />
+                      Exportar Clientes (.csv)
+                    </a>
+                  </Button>
+                </div>
+              )}
+
+              {exportPermissions.canReadFinancial && (
+                <div className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-[#F5F7FA] p-4 space-y-3">
+                  <div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                      <Wallet className="h-5 w-5" />
+                    </div>
+                    <h3 className="mt-3 text-sm font-bold text-[#142B4F]">
+                      Financeiro
+                    </h3>
+                    <p className="mt-1 text-xs text-[#64748B]">
+                      Todos os lançamentos financeiros: receitas, despesas, valores, vencimentos e pagamentos.
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" asChild>
+                    <a href="/api/export?type=financial" download>
+                      <Download className="h-3.5 w-3.5" />
+                      Exportar Financeiro (.csv)
+                    </a>
+                  </Button>
+                </div>
+              )}
+
+              {exportPermissions.canReadAppointments && (
+                <div className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-[#F5F7FA] p-4 space-y-3">
+                  <div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FFF0E5] text-[#C2410C]">
+                      <Calendar className="h-5 w-5" />
+                    </div>
+                    <h3 className="mt-3 text-sm font-bold text-[#142B4F]">
+                      Agendamentos em aberto
+                    </h3>
+                    <p className="mt-1 text-xs text-[#64748B]">
+                      Agendamentos aguardando, confirmados ou em atendimento com cliente, profissional e serviços.
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" asChild>
+                    <a href="/api/export?type=open_appointments" download>
+                      <Download className="h-3.5 w-3.5" />
+                      Exportar Agendamentos (.csv)
+                    </a>
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
+              <div>
+                <p className="text-sm font-bold text-[#142B4F]">
+                  Exportar pacote completo
+                </p>
+                <p className="text-xs text-[#64748B]">
+                  Baixa os arquivos CSV de clientes, financeiro e agendamentos em aberto de uma só vez.
+                </p>
+              </div>
+              <Button type="button" onClick={triggerExportAll}>
+                <Download className="h-4 w-4" />
+                Exportar tudo (.csv)
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* TAB: SEGURANÇA E SESSÕES ATIVAS */}

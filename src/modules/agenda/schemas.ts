@@ -34,6 +34,20 @@ export const appointmentInputSchema = z.object({
   status: z.enum(APPOINTMENT_STATUSES).default("waiting"),
   allowOverbooking: z.boolean().default(false),
   notes: z.string().trim().max(1000).optional().or(z.literal("")),
+  recurrenceEnabled: z.boolean().optional().default(false),
+  recurrenceFrequency: z
+    .enum(["daily", "weekly", "biweekly", "monthly"])
+    .optional()
+    .default("weekly"),
+  recurrenceEndType: z
+    .enum(["until_date", "no_end"])
+    .optional()
+    .default("no_end"),
+  recurrenceUntilDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data final da recorrência inválida.")
+    .optional()
+    .or(z.literal("")),
 });
 
 export type AppointmentInput = z.infer<typeof appointmentInputSchema>;

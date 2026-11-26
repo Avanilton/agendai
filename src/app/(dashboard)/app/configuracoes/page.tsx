@@ -40,6 +40,11 @@ export default async function SettingsPage() {
           canWriteFinancial: hasPermission(ctx.permissions, "financial:write"),
           canManageSettings: hasPermission(ctx.permissions, "settings:manage"),
         }}
+        exportPermissions={{
+          canReadClients: hasPermission(ctx.permissions, "clients:read"),
+          canReadFinancial,
+          canReadAppointments: hasPermission(ctx.permissions, "appointments:read"),
+        }}
       />
     </Suspense>
   );

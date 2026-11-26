@@ -20,7 +20,7 @@ export default function AuthLayout({
             Organize sua agenda e simplifique a gestão do seu negócio.
           </h2>
           <p className="text-sm leading-relaxed text-slate-300">
-            Ambiente multi-tenant seguro com controle de permissões, trilha de
+            Ambiente seguro com controle de permissões, trilha de
             auditoria e conformidade com a LGPD desde o primeiro acesso.
           </p>
 
@@ -41,13 +41,13 @@ export default function AuthLayout({
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-[#FF914D]">
                 <Lock className="h-4 w-4" />
               </span>
-              <span>Sessões protegidas por cookies HttpOnly e auditoria</span>
+              <span>Sessões protegidas!</span>
             </div>
           </div>
         </div>
 
         <p className="text-xs text-slate-400">
-          © {new Date().getFullYear()} Agendai. Plataforma SaaS de Agendamento e Gestão.
+          © {new Date().getFullYear()} Agendai. Plataforma de Agendamento e Gestão.
         </p>
       </aside>
 

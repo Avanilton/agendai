@@ -62,6 +62,8 @@ export async function listAppointmentsInRange(params: {
       status: appointments.status,
       isOverbooking: appointments.isOverbooking,
       source: appointments.source,
+      recurrenceGroupId: appointments.recurrenceGroupId,
+      recurrenceRule: appointments.recurrenceRule,
       notes: appointments.notes,
       cancellationReason: appointments.cancellationReason,
     })
@@ -123,6 +125,8 @@ export async function listAppointmentsInRange(params: {
     status: row.status,
     isOverbooking: row.isOverbooking,
     source: row.source,
+    recurrenceGroupId: row.recurrenceGroupId,
+    recurrenceRule: row.recurrenceRule,
     notes: row.notes,
     cancellationReason: row.cancellationReason,
     startsAtIso: row.startsAt.toISOString(),
@@ -163,6 +167,8 @@ export async function listOpenFutureAppointments(organizationId: string) {
       status: appointments.status,
       isOverbooking: appointments.isOverbooking,
       source: appointments.source,
+      recurrenceGroupId: appointments.recurrenceGroupId,
+      recurrenceRule: appointments.recurrenceRule,
       notes: appointments.notes,
       cancellationReason: appointments.cancellationReason,
     })
@@ -232,12 +238,57 @@ export async function listOpenFutureAppointments(organizationId: string) {
     status: row.status,
     isOverbooking: row.isOverbooking,
     source: row.source,
+    recurrenceGroupId: row.recurrenceGroupId,
+    recurrenceRule: row.recurrenceRule,
     notes: row.notes,
     cancellationReason: row.cancellationReason,
     startsAtIso: row.startsAt.toISOString(),
     endsAtIso: row.endsAt.toISOString(),
     services: byAppt.get(row.id) ?? [],
   }));
+}
+
+function generateRecurrenceDates(params: {
+  startDate: string;
+  frequency: "daily" | "weekly" | "biweekly" | "monthly";
+  endType: "until_date" | "no_end";
+  untilDate?: string;
+}): string[] {
+  const { startDate, frequency, endType, untilDate } = params;
+  const maxOccurrences = endType === "no_end" ? 12 : 52;
+  const dates: string[] = [startDate];
+
+  const [y0, m0, d0] = startDate.split("-").map(Number);
+  if (!y0 || !m0 || !d0) return dates;
+
+  for (let i = 1; i < maxOccurrences; i++) {
+    let nextDate: Date;
+    if (frequency === "monthly") {
+      const targetMonth = m0 - 1 + i;
+      const targetYear = y0 + Math.floor(targetMonth / 12);
+      const normMonth = ((targetMonth % 12) + 12) % 12;
+      const lastDay = new Date(Date.UTC(targetYear, normMonth + 1, 0)).getUTCDate();
+      nextDate = new Date(
+        Date.UTC(targetYear, normMonth, Math.min(d0, lastDay), 15, 0, 0)
+      );
+    } else {
+      const stepDays =
+        frequency === "daily" ? 1 : frequency === "biweekly" ? 14 : 7;
+      nextDate = new Date(Date.UTC(y0, m0 - 1, d0 + i * stepDays, 15, 0, 0));
+    }
+
+    const yyyy = nextDate.getUTCFullYear();
+    const mm = String(nextDate.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(nextDate.getUTCDate()).padStart(2, "0");
+    const key = `${yyyy}-${mm}-${dd}`;
+
+    if (endType === "until_date" && untilDate && key > untilDate) {
+      break;
+    }
+    dates.push(key);
+  }
+
+  return dates;
 }
 
 export async function createOrUpdateAppointment(params: {
@@ -303,152 +354,187 @@ export async function createOrUpdateAppointment(params: {
       ? Math.round(input.totalPriceReais * 100)
       : computed.totalPriceCents;
 
-  const startsAt = buildBrazilTimestamp(input.date, input.startTime);
-  const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
+  const occurrenceDates =
+    !appointmentId && input.recurrenceEnabled
+      ? generateRecurrenceDates({
+          startDate: input.date,
+          frequency: input.recurrenceFrequency ?? "weekly",
+          endType: input.recurrenceEndType ?? "no_end",
+          untilDate: input.recurrenceUntilDate || undefined,
+        })
+      : [input.date];
 
-  // Query potential conflicts on the same day window for this professional
-  const dayStart = new Date(startsAt.getTime() - 24 * 60 * 60_000);
-  const dayEnd = new Date(endsAt.getTime() + 24 * 60 * 60_000);
+  const recurrenceGroupId =
+    !appointmentId && input.recurrenceEnabled && occurrenceDates.length > 1
+      ? crypto.randomUUID()
+      : null;
+  const recurrenceRule =
+    !appointmentId && input.recurrenceEnabled
+      ? `${input.recurrenceFrequency ?? "weekly"}:${input.recurrenceEndType === "until_date" && input.recurrenceUntilDate ? input.recurrenceUntilDate : "no_end"}`
+      : null;
 
-  const [existingAppts, blocks] = await Promise.all([
-    db
-      .select({
-        id: appointments.id,
-        startsAt: appointments.startsAt,
-        endsAt: appointments.endsAt,
-        status: appointments.status,
-      })
-      .from(appointments)
-      .where(
-        and(
-          eq(appointments.organizationId, organizationId),
-          eq(appointments.professionalId, input.professionalId),
-          isNull(appointments.deletedAt),
-          gte(appointments.endsAt, dayStart),
-          lte(appointments.startsAt, dayEnd)
-        )
-      ),
-    db
-      .select({
-        id: scheduleBlocks.id,
-        startsAt: scheduleBlocks.startsAt,
-        endsAt: scheduleBlocks.endsAt,
-        title: scheduleBlocks.title,
-      })
-      .from(scheduleBlocks)
-      .where(
-        and(
-          eq(scheduleBlocks.organizationId, organizationId),
-          isNull(scheduleBlocks.deletedAt),
-          or(
-            eq(scheduleBlocks.professionalId, input.professionalId),
-            isNull(scheduleBlocks.professionalId)
-          )!,
-          gte(scheduleBlocks.endsAt, dayStart),
-          lte(scheduleBlocks.startsAt, dayEnd)
-        )
-      ),
-  ]);
+  let firstSavedId: string | undefined = appointmentId;
+  let createdCount = 0;
+  let skippedCount = 0;
 
-  const conflict = detectScheduleConflict({
-    proposed: { startsAt, endsAt },
-    existingAppointments: existingAppts,
-    scheduleBlocks: blocks,
-    ignoreAppointmentId: appointmentId,
-  });
+  for (let idx = 0; idx < occurrenceDates.length; idx++) {
+    const occDate = occurrenceDates[idx]!;
+    const startsAt = buildBrazilTimestamp(occDate, input.startTime);
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
 
-  if (conflict.hasConflict) {
-    if (conflict.reason === "appointment" && input.allowOverbooking) {
-      if (!canOverbook) {
-        throw new Error(
-          "Você não tem permissão para realizar encaixes em horários já ocupados."
-        );
+    const dayStart = new Date(startsAt.getTime() - 24 * 60 * 60_000);
+    const dayEnd = new Date(endsAt.getTime() + 24 * 60 * 60_000);
+
+    const [existingAppts, blocks] = await Promise.all([
+      db
+        .select({
+          id: appointments.id,
+          startsAt: appointments.startsAt,
+          endsAt: appointments.endsAt,
+          status: appointments.status,
+        })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.organizationId, organizationId),
+            eq(appointments.professionalId, input.professionalId),
+            isNull(appointments.deletedAt),
+            gte(appointments.endsAt, dayStart),
+            lte(appointments.startsAt, dayEnd)
+          )
+        ),
+      db
+        .select({
+          id: scheduleBlocks.id,
+          startsAt: scheduleBlocks.startsAt,
+          endsAt: scheduleBlocks.endsAt,
+          title: scheduleBlocks.title,
+        })
+        .from(scheduleBlocks)
+        .where(
+          and(
+            eq(scheduleBlocks.organizationId, organizationId),
+            isNull(scheduleBlocks.deletedAt),
+            or(
+              eq(scheduleBlocks.professionalId, input.professionalId),
+              isNull(scheduleBlocks.professionalId)
+            )!,
+            gte(scheduleBlocks.endsAt, dayStart),
+            lte(scheduleBlocks.startsAt, dayEnd)
+          )
+        ),
+    ]);
+
+    const conflict = detectScheduleConflict({
+      proposed: { startsAt, endsAt },
+      existingAppointments: existingAppts,
+      scheduleBlocks: blocks,
+      ignoreAppointmentId: appointmentId,
+    });
+
+    if (conflict.hasConflict) {
+      if (conflict.reason === "appointment" && input.allowOverbooking) {
+        if (!canOverbook) {
+          throw new Error(
+            "Você não tem permissão para realizar encaixes em horários já ocupados."
+          );
+        }
+      } else if (idx === 0) {
+        throw new Error(conflict.message || "Conflito de horário detectado.");
+      } else {
+        skippedCount++;
+        continue;
       }
-    } else {
-      throw new Error(conflict.message || "Conflito de horário detectado.");
     }
-  }
 
-  let savedId = appointmentId;
+    let savedId = appointmentId;
 
-  if (appointmentId) {
-    await db
-      .update(appointments)
-      .set({
-        clientId: input.clientId,
-        professionalId: input.professionalId,
-        startsAt,
-        endsAt,
-        durationMinutes,
-        totalPriceCents,
-        status: input.status,
-        isOverbooking: conflict.hasConflict && input.allowOverbooking,
-        notes: input.notes || null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(appointments.id, appointmentId),
-          eq(appointments.organizationId, organizationId)
-        )
-      );
+    if (appointmentId) {
+      await db
+        .update(appointments)
+        .set({
+          clientId: input.clientId,
+          professionalId: input.professionalId,
+          startsAt,
+          endsAt,
+          durationMinutes,
+          totalPriceCents,
+          status: input.status,
+          isOverbooking: conflict.hasConflict && input.allowOverbooking,
+          notes: input.notes || null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(appointments.id, appointmentId),
+            eq(appointments.organizationId, organizationId)
+          )
+        );
 
-    await db
-      .delete(appointmentServices)
-      .where(
-        and(
-          eq(appointmentServices.appointmentId, appointmentId),
-          eq(appointmentServices.organizationId, organizationId)
-        )
-      );
-  } else {
-    const [inserted] = await db
-      .insert(appointments)
-      .values({
+      await db
+        .delete(appointmentServices)
+        .where(
+          and(
+            eq(appointmentServices.appointmentId, appointmentId),
+            eq(appointmentServices.organizationId, organizationId)
+          )
+        );
+    } else {
+      const [inserted] = await db
+        .insert(appointments)
+        .values({
+          organizationId,
+          clientId: input.clientId,
+          professionalId: input.professionalId,
+          startsAt,
+          endsAt,
+          durationMinutes,
+          totalPriceCents,
+          status: input.status,
+          isOverbooking: conflict.hasConflict && input.allowOverbooking,
+          source: "internal",
+          recurrenceGroupId,
+          recurrenceRule,
+          notes: input.notes || null,
+          createdByUserId: actorUserId,
+        })
+        .returning();
+
+      savedId = inserted!.id;
+      if (!firstSavedId) firstSavedId = savedId;
+    }
+
+    await db.insert(appointmentServices).values(
+      serviceRows.map((svc, sIdx) => ({
         organizationId,
-        clientId: input.clientId,
-        professionalId: input.professionalId,
-        startsAt,
-        endsAt,
-        durationMinutes,
-        totalPriceCents,
-        status: input.status,
-        isOverbooking: conflict.hasConflict && input.allowOverbooking,
-        source: "internal",
-        notes: input.notes || null,
-        createdByUserId: actorUserId,
-      })
-      .returning();
+        appointmentId: savedId!,
+        serviceId: svc.id,
+        serviceNameSnapshot: svc.name,
+        priceCents: svc.priceCents,
+        durationMinutes: svc.durationMinutes,
+        sortOrder: sIdx,
+      }))
+    );
 
-    savedId = inserted!.id;
+    createdCount++;
   }
-
-  await db.insert(appointmentServices).values(
-    serviceRows.map((svc, idx) => ({
-      organizationId,
-      appointmentId: savedId!,
-      serviceId: svc.id,
-      serviceNameSnapshot: svc.name,
-      priceCents: svc.priceCents,
-      durationMinutes: svc.durationMinutes,
-      sortOrder: idx,
-    }))
-  );
 
   await logAudit({
     organizationId,
     actorUserId,
     action: appointmentId ? "appointment.updated" : "appointment.created",
     resourceType: "appointment",
-    resourceId: savedId!,
+    resourceId: firstSavedId!,
     metadata: {
       status: input.status,
-      isOverbooking: conflict.hasConflict && input.allowOverbooking,
       serviceCount: serviceRows.length,
+      createdCount,
+      skippedCount,
+      recurrenceRule,
     },
   });
 
-  return { id: savedId! };
+  return { id: firstSavedId!, createdCount, skippedCount };
 }
 
 export async function updateAppointmentStatus(params: {

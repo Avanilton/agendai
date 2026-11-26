@@ -33,11 +33,21 @@ export type CreateRecordTemplateInput = z.infer<
   typeof createRecordTemplateSchema
 >;
 
+export const recordAttachmentSchema = z.object({
+  id: z.string().min(1).max(80),
+  fileName: z.string().trim().min(1).max(200),
+  mimeType: z.string().trim().min(1).max(120),
+  sizeBytes: z.coerce.number().int().min(0).max(6 * 1024 * 1024),
+  dataUrl: z.string().min(1).max(8 * 1024 * 1024),
+  uploadedAtIso: z.string().min(1),
+});
+
 export const createClientRecordSchema = z.object({
   clientId: z.string().uuid("Selecione um cliente válido."),
   templateId: z.string().uuid("Selecione um modelo de ficha válido."),
   professionalId: z.string().uuid().optional().or(z.literal("")),
   answers: z.record(z.string(), z.union([z.string(), z.boolean()])),
+  attachments: z.array(recordAttachmentSchema).max(10).default([]),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 

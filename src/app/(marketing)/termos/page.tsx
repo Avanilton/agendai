@@ -14,7 +14,7 @@ export default function TermsPage() {
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-[#142B4F]">1. Objeto</h2>
           <p>
-            O Agendai é uma plataforma SaaS voltada à gestão de agendamentos,
+            O Agendai é uma plataforma voltada à gestão de agendamentos,
             clientes, equipe, finanças e rotinas operacionais para empresas e
             profissionais prestadores de serviços.
           </p>

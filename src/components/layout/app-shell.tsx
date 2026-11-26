@@ -20,6 +20,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Percent,
+  Repeat,
   Scissors,
   Settings,
   ShoppingBag,
@@ -132,6 +133,12 @@ const NAV_ITEMS: NavItem[] = [
     href: "/app/pacotes-orcamentos",
     icon: Layers,
     requiredPermission: "clients:read",
+  },
+  {
+    label: "Planos de Assinatura",
+    href: "/app/planos-assinatura",
+    icon: Repeat,
+    requiredPermission: "services:read",
   },
   {
     label: "Estoque e Compras",

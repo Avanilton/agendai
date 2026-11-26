@@ -32,6 +32,15 @@ export interface RecordFieldDefinition {
   options?: string[];
 }
 
+export interface RecordAttachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataUrl: string;
+  uploadedAtIso: string;
+}
+
 export const recordTemplates = pgTable(
   "record_templates",
   {
@@ -85,6 +94,10 @@ export const clientRecords = pgTable(
       .$type<Record<string, string | boolean>>()
       .notNull()
       .default({}),
+    attachments: jsonb("attachments")
+      .$type<RecordAttachment[]>()
+      .notNull()
+      .default([]),
     notes: text("notes"),
     signedAt: timestamp("signed_at", { withTimezone: true }),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
@@ -103,6 +116,41 @@ export const clientRecords = pgTable(
       table.organizationId,
       table.clientId,
       table.createdAt
+    ),
+  ]
+);
+
+export const clientAttachments = pgTable(
+  "client_attachments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    dataUrl: text("data_url").notNull(),
+    notes: text("notes"),
+    channel: text("channel").notNull().default("whatsapp"),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("client_attachments_org_client_idx").on(
+      table.organizationId,
+      table.clientId,
+      table.sentAt
     ),
   ]
 );

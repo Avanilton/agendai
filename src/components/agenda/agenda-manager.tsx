@@ -14,6 +14,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Repeat,
   Settings2,
   XCircle,
   AlertTriangle,
@@ -25,6 +26,7 @@ import {
   updateAppointmentStatusAction,
 } from "@/modules/agenda/actions";
 import type { AppointmentStatus } from "@/modules/agenda/conflicts";
+import type { ActiveClientSubscriptionSummary } from "@/modules/subscriptions/service";
 import { buildWhatsAppUrl } from "@/modules/communications/templates";
 import { formatCurrencyBRL, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -52,6 +54,8 @@ export interface AgendaAppointmentRow {
   totalPriceCents: number;
   status: AppointmentStatus;
   isOverbooking: boolean;
+  recurrenceGroupId?: string | null;
+  recurrenceRule?: string | null;
   notes: string | null;
   services: {
     serviceId: string;
@@ -74,6 +78,7 @@ export interface AgendaBlockRow {
 interface AgendaManagerProps {
   initialAppointments: AgendaAppointmentRow[];
   openFutureAppointments: AgendaAppointmentRow[];
+  clientSubscriptions: Record<string, ActiveClientSubscriptionSummary>;
   organizationName: string;
   scheduleBlocks: AgendaBlockRow[];
   clients: { id: string; name: string }[];
@@ -214,6 +219,7 @@ function formatWeekRange(dates: string[]): string {
 export function AgendaManager({
   initialAppointments,
   openFutureAppointments,
+  clientSubscriptions,
   organizationName,
   scheduleBlocks,
   clients,
@@ -338,6 +344,10 @@ export function AgendaManager({
     status: "waiting" as AppointmentStatus,
     allowOverbooking: false,
     notes: "",
+    recurrenceEnabled: false,
+    recurrenceFrequency: "weekly" as "daily" | "weekly" | "biweekly" | "monthly",
+    recurrenceEndType: "no_end" as "until_date" | "no_end",
+    recurrenceUntilDate: "",
   });
 
   const filteredAppointments = useMemo(() => {
@@ -408,6 +418,10 @@ export function AgendaManager({
       status: "waiting",
       allowOverbooking: false,
       notes: "",
+      recurrenceEnabled: false,
+      recurrenceFrequency: "weekly",
+      recurrenceEndType: "no_end",
+      recurrenceUntilDate: "",
     });
     setModalOpen(true);
   }
@@ -425,6 +439,10 @@ export function AgendaManager({
       status: appt.status,
       allowOverbooking: appt.isOverbooking,
       notes: appt.notes ?? "",
+      recurrenceEnabled: false,
+      recurrenceFrequency: "weekly",
+      recurrenceEndType: "no_end",
+      recurrenceUntilDate: "",
     });
     setModalOpen(true);
   }
@@ -476,7 +494,17 @@ export function AgendaManager({
       return;
     }
 
-    toast.success(editingId ? "Agendamento atualizado!" : "Agendamento criado!");
+    if (!editingId && form.recurrenceEnabled) {
+      const createdCount = (result.data as { createdCount?: number } | undefined)?.createdCount ?? 1;
+      const skippedCount = (result.data as { skippedCount?: number } | undefined)?.skippedCount ?? 0;
+      toast.success(
+        skippedCount > 0
+          ? `${createdCount} agendamentos recorrentes criados (${skippedCount} horário(s) ignorado(s) por conflito).`
+          : `${createdCount} agendamentos recorrentes criados!`
+      );
+    } else {
+      toast.success(editingId ? "Agendamento atualizado!" : "Agendamento criado!");
+    }
     setModalOpen(false);
     router.refresh();
   }
@@ -556,6 +584,18 @@ export function AgendaManager({
                   {appt.isOverbooking && (
                     <Badge variant="orange" className="text-[10px]">
                       Encaixe
+                    </Badge>
+                  )}
+                  {appt.recurrenceRule && (
+                    <Badge variant="outline" className="gap-1 text-[10px]">
+                      <Repeat className="h-2.5 w-2.5 text-[#2563EB]" />
+                      Recorrente
+                    </Badge>
+                  )}
+                  {clientSubscriptions[appt.clientId] && (
+                    <Badge variant="default" className="text-[10px]">
+                      Plano: {clientSubscriptions[appt.clientId]!.planName} (Dia{" "}
+                      {clientSubscriptions[appt.clientId]!.billingDueDay})
                     </Badge>
                   )}
                 </div>
@@ -1248,6 +1288,36 @@ export function AgendaManager({
             </div>
           </div>
 
+          {/* Active Client Subscription Plan Banner when scheduling */}
+          {form.clientId && clientSubscriptions[form.clientId] && (
+            <div className="rounded-xl border border-[#2563EB]/30 bg-[#EAF2FF]/70 p-3 text-xs text-[#142B4F] space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 font-extrabold text-[#142B4F]">
+                  <Repeat className="h-3.5 w-3.5 text-[#2563EB]" />
+                  Cliente com Plano Ativo:{" "}
+                  {clientSubscriptions[form.clientId]!.planName}
+                </p>
+                <Badge variant="orange" className="text-[10px]">
+                  Vencimento todo dia{" "}
+                  {clientSubscriptions[form.clientId]!.billingDueDay}
+                </Badge>
+              </div>
+              {clientSubscriptions[form.clientId]!.includedItems.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {clientSubscriptions[form.clientId]!.includedItems.map((it) => (
+                    <Badge
+                      key={`${it.itemType}-${it.itemId}`}
+                      variant="outline"
+                      className="bg-white text-[10px]"
+                    >
+                      {it.quantity}x {it.nameSnapshot}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label>Serviços * (múltipla seleção)</Label>
             <div className="grid max-h-36 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-[#F5F7FA] p-3 sm:grid-cols-2">
@@ -1354,6 +1424,93 @@ export function AgendaManager({
               </div>
             )}
           </div>
+
+          {/* Recurrence Controls (only on creation) */}
+          {!editingId && (
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-[#F5F7FA]/80 p-3.5">
+              <label className="flex items-center gap-2 text-xs font-bold text-[#142B4F] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.recurrenceEnabled}
+                  onChange={(e) =>
+                    setForm({ ...form, recurrenceEnabled: e.target.checked })
+                  }
+                />
+                <Repeat className="h-3.5 w-3.5 text-[#2563EB]" />
+                Repetir agendamento (recorrência)
+              </label>
+
+              {form.recurrenceEnabled && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="a-rec-freq">Frequência</Label>
+                    <select
+                      id="a-rec-freq"
+                      value={form.recurrenceFrequency}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          recurrenceFrequency: e.target
+                            .value as typeof form.recurrenceFrequency,
+                        })
+                      }
+                      className="flex h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-[#142B4F]"
+                    >
+                      <option value="weekly">Semanal</option>
+                      <option value="biweekly">Quinzenal</option>
+                      <option value="monthly">Mensal</option>
+                      <option value="daily">Diária</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="a-rec-end">Término</Label>
+                    <select
+                      id="a-rec-end"
+                      value={form.recurrenceEndType}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          recurrenceEndType: e.target
+                            .value as typeof form.recurrenceEndType,
+                        })
+                      }
+                      className="flex h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-[#142B4F]"
+                    >
+                      <option value="no_end">Sem data final (contínuo)</option>
+                      <option value="until_date">Até uma data final</option>
+                    </select>
+                  </div>
+
+                  {form.recurrenceEndType === "until_date" ? (
+                    <div className="space-y-1">
+                      <Label htmlFor="a-rec-until">Data final *</Label>
+                      <Input
+                        id="a-rec-until"
+                        type="date"
+                        min={form.date}
+                        value={form.recurrenceUntilDate}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            recurrenceUntilDate: e.target.value,
+                          })
+                        }
+                        required
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-end">
+                      <p className="text-[11px] text-[#64748B]">
+                        Serão criadas as próximas 12 ocorrências automaticamente.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="a-notes">Observações</Label>

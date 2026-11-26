@@ -20,7 +20,7 @@ import {
 
 export async function createAppointmentAction(
   rawInput: unknown
-): Promise<ActionResult<{ id: string }>> {
+): Promise<ActionResult<{ id: string; createdCount?: number; skippedCount?: number }>> {
   try {
     const ctx = await requirePermission("appointments:write");
     const parsed = appointmentInputSchema.safeParse(rawInput);

@@ -86,22 +86,52 @@ export function MarketingFooter() {
                 </a>
               </li>
               <li className="text-slate-400">Atendimento de segunda a sexta</li>
-              <li className="flex items-center gap-3 pt-2">
+              <li className="flex flex-col gap-2 pt-2">
                 <a
-                  href="https://instagram.com"
+                  href="https://instagram.com/agendai"
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium hover:border-[#FF914D] hover:text-white transition-colors"
+                  aria-label="Instagram da Agendai"
+                  className="inline-flex w-fit items-center gap-2 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-[#FF914D] hover:text-white transition-colors"
                 >
-                  Instagram
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4 shrink-0 text-[#FF914D]"
+                    aria-hidden="true"
+                  >
+                    <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+                  </svg>
+                  <span>instagram.com/agendai</span>
                 </a>
                 <a
-                  href="https://linkedin.com"
+                  href="https://linkedin.com/company/agendai"
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium hover:border-[#FF914D] hover:text-white transition-colors"
+                  aria-label="LinkedIn da Agendai"
+                  className="inline-flex w-fit items-center gap-2 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:border-[#FF914D] hover:text-white transition-colors"
                 >
-                  LinkedIn
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-4 w-4 shrink-0 text-[#38BDF8]"
+                    aria-hidden="true"
+                  >
+                    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+                    <rect width="4" height="12" x="2" y="9" />
+                    <circle cx="4" cy="4" r="2" />
+                  </svg>
+                  <span>linkedin.com/company/agendai</span>
                 </a>
               </li>
             </ul>

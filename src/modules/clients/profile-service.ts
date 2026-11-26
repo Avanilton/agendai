@@ -4,9 +4,11 @@ import {
   appointments,
   appointmentServices,
   budgets,
+  clientAttachments,
   clientPackages,
   clientRecords,
   clients,
+  clientSubscriptions,
   financialAccounts,
   financialCategories,
   financialTransactions,
@@ -14,7 +16,10 @@ import {
   recordTemplates,
   saleItems,
   sales,
+  subscriptionPlans,
+  type RecordAttachment,
   type RecordFieldDefinition,
+  type SubscriptionPlanItem,
 } from "@/db/schema";
 import { assertTenantOwnership } from "@/lib/tenant/context";
 import { logAudit } from "@/lib/security/audit";
@@ -66,9 +71,35 @@ export interface ClientProfileRecord {
   version: number;
   professionalName: string | null;
   answers: Record<string, string | boolean>;
+  attachments: RecordAttachment[];
   fieldLabels: Record<string, string>;
   notes: string | null;
   createdAtIso: string;
+}
+
+export interface ClientProfileAttachment {
+  id: string;
+  title: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataUrl: string;
+  notes: string | null;
+  channel: string;
+  sentAtIso: string;
+}
+
+export interface ClientProfileSubscription {
+  id: string;
+  planId: string;
+  planName: string;
+  priceCents: number;
+  paymentMethod: string;
+  billingDueDay: number;
+  status: "active" | "paused" | "cancelled";
+  includedItems: SubscriptionPlanItem[];
+  notes: string | null;
+  startedAtIso: string;
 }
 
 export interface ClientProfileTransaction {
@@ -146,6 +177,8 @@ export interface ClientFullProfile {
   };
   appointments: ClientProfileAppointment[];
   records: ClientProfileRecord[];
+  attachments: ClientProfileAttachment[];
+  subscriptions: ClientProfileSubscription[];
   transactions: ClientProfileTransaction[];
   sales: ClientProfileSale[];
   packages: ClientProfilePackage[];
@@ -182,6 +215,8 @@ export async function getClientFullProfile(params: {
   const [
     apptRows,
     recordRows,
+    attachmentRows,
+    subscriptionRows,
     txRows,
     saleRows,
     pkgRows,
@@ -227,6 +262,7 @@ export async function getClientFullProfile(params: {
             version: clientRecords.version,
             professionalName: professionals.name,
             answers: clientRecords.answers,
+            attachments: clientRecords.attachments,
             notes: clientRecords.notes,
             createdAt: clientRecords.createdAt,
             templateFields: recordTemplates.fields,
@@ -250,6 +286,45 @@ export async function getClientFullProfile(params: {
           .orderBy(desc(clientRecords.createdAt))
           .limit(100)
       : Promise.resolve([]),
+    db
+      .select()
+      .from(clientAttachments)
+      .where(
+        and(
+          eq(clientAttachments.organizationId, organizationId),
+          eq(clientAttachments.clientId, clientId),
+          isNull(clientAttachments.deletedAt)
+        )
+      )
+      .orderBy(desc(clientAttachments.sentAt))
+      .limit(100),
+    db
+      .select({
+        id: clientSubscriptions.id,
+        planId: clientSubscriptions.planId,
+        planName: subscriptionPlans.name,
+        priceCents: subscriptionPlans.priceCents,
+        paymentMethod: clientSubscriptions.paymentMethod,
+        billingDueDay: clientSubscriptions.billingDueDay,
+        status: clientSubscriptions.status,
+        includedItems: subscriptionPlans.includedItems,
+        notes: clientSubscriptions.notes,
+        startedAt: clientSubscriptions.startedAt,
+      })
+      .from(clientSubscriptions)
+      .innerJoin(
+        subscriptionPlans,
+        eq(clientSubscriptions.planId, subscriptionPlans.id)
+      )
+      .where(
+        and(
+          eq(clientSubscriptions.organizationId, organizationId),
+          eq(clientSubscriptions.clientId, clientId),
+          isNull(subscriptionPlans.deletedAt)
+        )
+      )
+      .orderBy(desc(clientSubscriptions.startedAt))
+      .limit(30),
     canReadFinancial
       ? db
           .select({
@@ -445,11 +520,41 @@ export async function getClientFullProfile(params: {
       version: r.version,
       professionalName: r.professionalName,
       answers: r.answers ?? {},
+      attachments: r.attachments ?? [],
       fieldLabels,
       notes: r.notes,
       createdAtIso: r.createdAt.toISOString(),
     };
   });
+
+  const mappedAttachments: ClientProfileAttachment[] = attachmentRows.map(
+    (a) => ({
+      id: a.id,
+      title: a.title,
+      fileName: a.fileName,
+      mimeType: a.mimeType,
+      sizeBytes: a.sizeBytes,
+      dataUrl: a.dataUrl,
+      notes: a.notes,
+      channel: a.channel,
+      sentAtIso: a.sentAt.toISOString(),
+    })
+  );
+
+  const mappedSubscriptions: ClientProfileSubscription[] = subscriptionRows.map(
+    (s) => ({
+      id: s.id,
+      planId: s.planId,
+      planName: s.planName,
+      priceCents: s.priceCents,
+      paymentMethod: s.paymentMethod,
+      billingDueDay: s.billingDueDay,
+      status: s.status,
+      includedItems: s.includedItems ?? [],
+      notes: s.notes,
+      startedAtIso: s.startedAt.toISOString(),
+    })
+  );
 
   const mappedTransactions: ClientProfileTransaction[] = txRows.map((t) => ({
     id: t.id,
@@ -571,10 +676,109 @@ export async function getClientFullProfile(params: {
     },
     appointments: mappedAppointments,
     records: mappedRecords,
+    attachments: mappedAttachments,
+    subscriptions: mappedSubscriptions,
     transactions: mappedTransactions,
     sales: mappedSales,
     packages: mappedPackages,
     budgets: mappedBudgets,
   };
+}
+
+export async function createClientAttachment(params: {
+  organizationId: string;
+  actorUserId: string;
+  clientId: string;
+  title: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataUrl: string;
+  notes?: string;
+  channel?: string;
+}) {
+  const db = getDb();
+  const { organizationId, actorUserId, clientId } = params;
+
+  const [cli] = await db
+    .select({ id: clients.id, organizationId: clients.organizationId })
+    .from(clients)
+    .where(and(eq(clients.id, clientId), isNull(clients.deletedAt)))
+    .limit(1);
+  assertTenantOwnership(cli?.organizationId, organizationId);
+
+  const [created] = await db
+    .insert(clientAttachments)
+    .values({
+      organizationId,
+      clientId,
+      title: params.title,
+      fileName: params.fileName,
+      mimeType: params.mimeType,
+      sizeBytes: params.sizeBytes,
+      dataUrl: params.dataUrl,
+      notes: params.notes || null,
+      channel: params.channel || "whatsapp",
+      sentAt: new Date(),
+      createdByUserId: actorUserId,
+    })
+    .returning();
+
+  await logAudit({
+    organizationId,
+    actorUserId,
+    action: "client_attachment.created",
+    resourceType: "client_attachment",
+    resourceId: created!.id,
+    metadata: { clientId, mimeType: params.mimeType, channel: params.channel || "whatsapp" },
+  });
+
+  return created!;
+}
+
+export async function deleteClientAttachment(params: {
+  organizationId: string;
+  actorUserId: string;
+  attachmentId: string;
+}) {
+  const db = getDb();
+  const { organizationId, actorUserId, attachmentId } = params;
+
+  const [existing] = await db
+    .select({
+      id: clientAttachments.id,
+      organizationId: clientAttachments.organizationId,
+      clientId: clientAttachments.clientId,
+    })
+    .from(clientAttachments)
+    .where(
+      and(
+        eq(clientAttachments.id, attachmentId),
+        isNull(clientAttachments.deletedAt)
+      )
+    )
+    .limit(1);
+
+  assertTenantOwnership(existing?.organizationId, organizationId);
+
+  await db
+    .update(clientAttachments)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(clientAttachments.id, attachmentId),
+        eq(clientAttachments.organizationId, organizationId)
+      )
+    );
+
+  await logAudit({
+    organizationId,
+    actorUserId,
+    action: "client_attachment.deleted",
+    resourceType: "client_attachment",
+    resourceId: attachmentId,
+  });
+
+  return existing!.clientId;
 }
 

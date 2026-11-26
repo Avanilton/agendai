@@ -9,6 +9,7 @@ import {
 import { listClients } from "@/modules/clients/service";
 import { listProfessionals } from "@/modules/professionals/service";
 import { listServices } from "@/modules/services/service";
+import { listActiveClientSubscriptionsMap } from "@/modules/subscriptions/service";
 import { AgendaManager } from "@/components/agenda/agenda-manager";
 
 export default async function AgendaPage() {
@@ -23,19 +24,27 @@ export default async function AgendaPage() {
   const rangeStart = new Date(now.getTime() - 60 * 24 * 60 * 60_000);
   const rangeEnd = new Date(now.getTime() + 90 * 24 * 60 * 60_000);
 
-  const [appts, openFutureAppts, blocks, clientRows, profRows, serviceRows] =
-    await Promise.all([
-      listAppointmentsInRange({
-        organizationId: ctx.organizationId,
-        rangeStart,
-        rangeEnd,
-      }),
-      listOpenFutureAppointments(ctx.organizationId),
-      listScheduleBlocks(ctx.organizationId),
-      listClients(ctx.organizationId, { status: "active" }),
-      listProfessionals(ctx.organizationId),
-      listServices(ctx.organizationId),
-    ]);
+  const [
+    appts,
+    openFutureAppts,
+    blocks,
+    clientRows,
+    profRows,
+    serviceRows,
+    clientSubscriptionsMap,
+  ] = await Promise.all([
+    listAppointmentsInRange({
+      organizationId: ctx.organizationId,
+      rangeStart,
+      rangeEnd,
+    }),
+    listOpenFutureAppointments(ctx.organizationId),
+    listScheduleBlocks(ctx.organizationId),
+    listClients(ctx.organizationId, { status: "active" }),
+    listProfessionals(ctx.organizationId),
+    listServices(ctx.organizationId),
+    listActiveClientSubscriptionsMap(ctx.organizationId),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -49,6 +58,7 @@ export default async function AgendaPage() {
       <AgendaManager
         initialAppointments={appts}
         openFutureAppointments={openFutureAppts}
+        clientSubscriptions={clientSubscriptionsMap}
         organizationName={ctx.organizationName}
         scheduleBlocks={blocks.map((b) => ({
           id: b.id,

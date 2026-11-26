@@ -17,7 +17,7 @@ import {
 
 const DEFAULT_TEMPLATES: {
   name: string;
-  category: "anamnesis" | "evaluation";
+  category: "anamnesis" | "evaluation" | "medical";
   description: string;
   fields: RecordFieldDefinition[];
 }[] = [
@@ -30,6 +30,16 @@ const DEFAULT_TEMPLATES: {
       { id: "alergias", label: "Possui alergias conhecidas?", type: "text", required: false },
       { id: "medicamentos", label: "Faz uso contínuo de medicamentos?", type: "text", required: false },
       { id: "gestante", label: "Gestante ou lactante?", type: "boolean", required: false },
+    ],
+  },
+  {
+    name: "Prontuário de Atendimento",
+    category: "medical",
+    description: "Registro de prontuário, evolução clínica, procedimentos realizados e anexos.",
+    fields: [
+      { id: "historico", label: "Histórico / Evolução do prontuário", type: "textarea", required: true },
+      { id: "procedimento", label: "Procedimentos realizados", type: "textarea", required: false },
+      { id: "prescricao", label: "Recomendações / Prescrição", type: "textarea", required: false },
     ],
   },
   {
@@ -104,6 +114,7 @@ export async function getRecordsWorkspaceData(params: {
         category: clientRecords.category,
         version: clientRecords.version,
         answers: clientRecords.answers,
+        attachments: clientRecords.attachments,
         notes: clientRecords.notes,
         createdAt: clientRecords.createdAt,
       })
@@ -234,6 +245,7 @@ export async function createClientRecord(params: {
       category: tpl!.category,
       version: tpl!.version,
       answers: input.answers,
+      attachments: input.attachments ?? [],
       notes: input.notes || null,
       createdByUserId: actorUserId,
     })

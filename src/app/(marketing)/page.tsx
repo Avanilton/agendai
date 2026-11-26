@@ -132,7 +132,7 @@ export default async function LandingPage() {
           <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12">
             <div className="space-y-6 lg:col-span-6">
               <Badge variant="orange" className="px-3.5 py-1.5 text-xs">
-                Plataforma SaaS de Agendamento e Gestão
+                Plataforma de Agendamento e Gestão
               </Badge>
 
               <h1 className="text-4xl font-extrabold tracking-tight text-[#142B4F] sm:text-5xl lg:text-[3.25rem] lg:leading-[1.1]">
@@ -167,7 +167,7 @@ export default async function LandingPage() {
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Lock className="h-4 w-4 text-[#2563EB]" />
-                  Isolamento multi-tenant & LGPD
+                  Seguro e dentro da LGPD
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Sparkles className="h-4 w-4 text-[#FF914D]" />
@@ -302,7 +302,7 @@ export default async function LandingPage() {
               <p className="text-[#64748B] leading-relaxed">
                 Cada empresa recebe seu próprio link exclusivo{" "}
                 <code className="rounded bg-[#EAF2FF] px-2 py-0.5 text-xs font-semibold text-[#2563EB]">
-                  agendai.com.br/agendar/sua-empresa
+                  agendai.site.br/agendar/sua-empresa
                 </code>
                 . O cliente escolhe o serviço, o profissional, a data e o
                 horário disponível com validação real no banco de dados para

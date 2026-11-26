@@ -7,29 +7,52 @@ import {
   ArrowLeft,
   Cake,
   Calendar,
+  CalendarClock,
+  Camera,
+  Download,
   FileHeart,
+  FileText,
   Layers,
+  Loader2,
   Mail,
   MapPin,
   MessageCircle,
+  Paperclip,
   Pencil,
   Phone,
+  Repeat,
   ShoppingBag,
+  Trash2,
+  Upload,
   User,
   Wallet,
 } from "lucide-react";
+import { toast } from "sonner";
 import type { ClientFullProfile } from "@/modules/clients/profile-service";
+import type { SubscriptionPlanRow } from "@/modules/subscriptions/service";
+import {
+  deleteClientAttachmentAction,
+  uploadClientAttachmentAction,
+} from "@/modules/clients/actions";
+import {
+  assignClientSubscriptionAction,
+  updateClientSubscriptionStatusAction,
+} from "@/modules/subscriptions/actions";
 import { buildWhatsAppUrl } from "@/modules/communications/templates";
 import { formatCurrencyBRL, cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ClientQuickFormModal } from "@/components/cadastros/client-quick-form-modal";
 
 type DetailTab =
   | "resumo"
   | "agendamentos"
   | "anamnese"
+  | "anexos"
+  | "planos"
   | "financeiro"
   | "pacotes";
 
@@ -107,12 +130,14 @@ function isBirthdayToday(birthDate: string | null): boolean {
 
 interface ClientDetailViewProps {
   profile: ClientFullProfile;
+  availablePlans: SubscriptionPlanRow[];
   organizationName: string;
   canWriteClients: boolean;
 }
 
 export function ClientDetailView({
   profile,
+  availablePlans,
   organizationName,
   canWriteClients,
 }: ClientDetailViewProps) {
@@ -123,6 +148,8 @@ export function ClientDetailView({
     "resumo",
     "agendamentos",
     "anamnese",
+    "anexos",
+    "planos",
     "financeiro",
     "pacotes",
   ];
@@ -132,7 +159,131 @@ export function ClientDetailView({
   const [activeTab, setActiveTab] = useState<DetailTab>(initialTab);
   const [editOpen, setEditOpen] = useState(false);
 
+  // Attachment upload state
+  const [attTitle, setAttTitle] = useState("");
+  const [attChannel, setAttChannel] = useState<"whatsapp" | "email" | "presencial" | "outro">("whatsapp");
+  const [attNotes, setAttNotes] = useState("");
+  const [attFile, setAttFile] = useState<{
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+    dataUrl: string;
+  } | null>(null);
+  const [uploadingAtt, setUploadingAtt] = useState(false);
+
+  // Subscription assignment state
+  const [selectedPlanId, setSelectedPlanId] = useState(availablePlans[0]?.id ?? "");
+  const [subPaymentMethod, setSubPaymentMethod] = useState(
+    availablePlans[0]?.paymentMethod ?? "pix"
+  );
+  const [subDueDay, setSubDueDay] = useState(availablePlans[0]?.billingDueDay ?? 10);
+  const [subNotes, setSubNotes] = useState("");
+  const [savingSub, setSavingSub] = useState(false);
+
   const { client, summary } = profile;
+  const activeSubscription = profile.subscriptions.find((s) => s.status === "active");
+
+  function handleSelectAttachmentFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("O arquivo deve ter no máximo 5 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setAttFile({
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+          dataUrl: reader.result,
+        });
+        if (!attTitle.trim()) {
+          setAttTitle(file.name.replace(/\.[^.]+$/, ""));
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSaveAttachment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!attFile) {
+      toast.error("Selecione uma foto ou arquivo PDF.");
+      return;
+    }
+    setUploadingAtt(true);
+    const res = await uploadClientAttachmentAction({
+      clientId: client.id,
+      title: attTitle.trim() || attFile.fileName,
+      fileName: attFile.fileName,
+      mimeType: attFile.mimeType,
+      sizeBytes: attFile.sizeBytes,
+      dataUrl: attFile.dataUrl,
+      notes: attNotes,
+      channel: attChannel,
+    });
+    setUploadingAtt(false);
+    if (!res.success) {
+      toast.error(res.error || "Erro ao salvar anexo.");
+      return;
+    }
+    toast.success("Anexo salvo com data e hora de envio registradas!");
+    setAttTitle("");
+    setAttNotes("");
+    setAttFile(null);
+    router.refresh();
+  }
+
+  async function handleDeleteAttachment(id: string) {
+    if (!window.confirm("Deseja remover este anexo?")) return;
+    const res = await deleteClientAttachmentAction(id);
+    if (!res.success) {
+      toast.error(res.error || "Erro ao remover anexo.");
+      return;
+    }
+    toast.success("Anexo removido.");
+    router.refresh();
+  }
+
+  async function handleAssignSubscription(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedPlanId) {
+      toast.error("Selecione um plano de assinatura.");
+      return;
+    }
+    setSavingSub(true);
+    const res = await assignClientSubscriptionAction({
+      clientId: client.id,
+      planId: selectedPlanId,
+      paymentMethod: subPaymentMethod,
+      billingDueDay: subDueDay,
+      status: "active",
+      notes: subNotes,
+    });
+    setSavingSub(false);
+    if (!res.success) {
+      toast.error(res.error || "Erro ao vincular plano.");
+      return;
+    }
+    toast.success("Plano de assinatura vinculado ao cliente!");
+    setSubNotes("");
+    router.refresh();
+  }
+
+  async function handleSubscriptionStatus(
+    subId: string,
+    status: "active" | "paused" | "cancelled"
+  ) {
+    const res = await updateClientSubscriptionStatusAction(subId, status);
+    if (!res.success) {
+      toast.error(res.error || "Erro ao atualizar assinatura.");
+      return;
+    }
+    toast.success("Status da assinatura atualizado!");
+    router.refresh();
+  }
   const phone = client.whatsapp || client.phone;
   const bdayToday = isBirthdayToday(client.birthDate);
   const whatsUrl = buildWhatsAppUrl(
@@ -167,6 +318,18 @@ export function ClientDetailView({
       label: "Fichas e Anamnese",
       icon: FileHeart,
       count: profile.records.length,
+    },
+    {
+      id: "anexos",
+      label: "Anexos (Fotos / PDF)",
+      icon: Paperclip,
+      count: profile.attachments.length,
+    },
+    {
+      id: "planos",
+      label: "Plano / Assinatura",
+      icon: Repeat,
+      count: profile.subscriptions.filter((s) => s.status === "active").length,
     },
     {
       id: "financeiro",
@@ -307,6 +470,24 @@ export function ClientDetailView({
                         {tag}
                       </Badge>
                     ))}
+                  </div>
+                )}
+
+                {activeSubscription && (
+                  <div className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-xl border border-[#2563EB]/30 bg-[#EAF2FF]/70 px-3 py-1.5 text-xs text-[#142B4F]">
+                    <Repeat className="h-3.5 w-3.5 text-[#2563EB]" />
+                    <span className="font-bold">
+                      Plano ativo: {activeSubscription.planName}
+                    </span>
+                    <span className="text-[#64748B]">•</span>
+                    <span className="font-semibold text-[#C2410C]">
+                      Vencimento dia {activeSubscription.billingDueDay}
+                    </span>
+                    <span className="text-[#64748B]">•</span>
+                    <span>
+                      {PAYMENT_METHOD_LABELS[activeSubscription.paymentMethod] ??
+                        activeSubscription.paymentMethod}
+                    </span>
                   </div>
                 )}
               </div>
@@ -669,10 +850,494 @@ export function ClientDetailView({
                         </p>
                       </div>
                     )}
+
+                    {rec.attachments && rec.attachments.length > 0 && (
+                      <div className="space-y-2 pt-1">
+                        <p className="text-xs font-bold text-[#142B4F]">
+                          Anexos da ficha ({rec.attachments.length})
+                        </p>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {rec.attachments.map((att) => (
+                            <div
+                              key={att.id}
+                              className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-[#F5F7FA] p-2.5 text-xs"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                {att.mimeType.startsWith("image/") ? (
+                                  /* eslint-disable-next-line @next/next/no-img-element */
+                                  <img
+                                    src={att.dataUrl}
+                                    alt={att.fileName}
+                                    className="h-10 w-10 rounded-lg object-cover shrink-0 border border-slate-200"
+                                  />
+                                ) : (
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#EAF2FF] text-[#2563EB]">
+                                    <FileText className="h-5 w-5" />
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <p className="truncate font-semibold text-[#142B4F]">
+                                    {att.fileName}
+                                  </p>
+                                  <p className="text-[10px] text-[#64748B]">
+                                    {formatDateTimeBR(att.uploadedAtIso)}
+                                  </p>
+                                </div>
+                              </div>
+                              <Button size="sm" variant="ghost" asChild>
+                                <a href={att.dataUrl} download={att.fileName}>
+                                  <Download className="h-3.5 w-3.5" />
+                                </a>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );
             })
+          )}
+        </div>
+      )}
+
+      {/* TAB: ANEXOS (FOTOS / PDF) COM DATA E HORA DE ENVIO */}
+      {activeTab === "anexos" && (
+        <div className="space-y-5">
+          {canWriteClients && (
+            <Card>
+              <CardContent className="p-5">
+                <form onSubmit={handleSaveAttachment} className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#142B4F]">
+                      Registrar envio de Foto ou PDF
+                    </h3>
+                    <p className="text-xs text-[#64748B]">
+                      Anexe o arquivo enviado ao cliente (ex.: PDF do treino, exame, foto de evolução) para manter gravado o dia e a hora exatos do envio.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="space-y-1 sm:col-span-2">
+                      <Label htmlFor="att-title">Título do documento / anexo *</Label>
+                      <Input
+                        id="att-title"
+                        placeholder="Ex.: Treino A - Novembro (PDF)"
+                        value={attTitle}
+                        onChange={(e) => setAttTitle(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="att-channel">Canal de envio</Label>
+                      <select
+                        id="att-channel"
+                        value={attChannel}
+                        onChange={(e) =>
+                          setAttChannel(e.target.value as typeof attChannel)
+                        }
+                        className="flex h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#142B4F]"
+                      >
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="email">E-mail</option>
+                        <option value="presencial">Presencial</option>
+                        <option value="outro">Outro</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="att-notes">Observações (opcional)</Label>
+                    <Input
+                      id="att-notes"
+                      placeholder="Ex.: Enviado via WhatsApp após avaliação física"
+                      value={attNotes}
+                      onChange={(e) => setAttNotes(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-[#142B4F] hover:border-[#2563EB]">
+                      <Upload className="h-4 w-4 text-[#2563EB]" />
+                      Selecionar Foto ou PDF (até 5 MB)
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={handleSelectAttachmentFile}
+                        className="hidden"
+                      />
+                    </label>
+
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-[#142B4F] hover:border-[#FF914D]">
+                      <Camera className="h-4 w-4 text-[#FF914D]" />
+                      Tirar foto (Câmera)
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleSelectAttachmentFile}
+                        className="hidden"
+                      />
+                    </label>
+
+                    {attFile && (
+                      <Badge variant="default" className="gap-1">
+                        <Paperclip className="h-3 w-3" />
+                        {attFile.fileName} (
+                        {Math.max(1, Math.round(attFile.sizeBytes / 1024))} KB)
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={uploadingAtt || !attFile}>
+                      {uploadingAtt && (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      )}
+                      Salvar anexo e registrar data/hora
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+
+          {profile.attachments.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center py-10 text-center">
+                <Paperclip className="h-8 w-8 text-[#2563EB]" />
+                <p className="mt-2 font-bold text-[#142B4F]">
+                  Nenhum anexo registrado para este cliente
+                </p>
+                <p className="mt-1 text-xs text-[#64748B]">
+                  Envie fotos ou PDFs acima para manter o histórico com data e hora.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {profile.attachments.map((att) => {
+                const isImage = att.mimeType.startsWith("image/");
+                const shareWhats = buildWhatsAppUrl(
+                  phone,
+                  `Olá, ${client.name}! Segue referência do arquivo "${att.title}" enviado em ${formatDateTimeBR(att.sentAtIso)}.`
+                );
+                return (
+                  <Card key={att.id}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start gap-3">
+                        {isImage ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={att.dataUrl}
+                            alt={att.title}
+                            className="h-16 w-16 rounded-xl object-cover shrink-0 border border-slate-200"
+                          />
+                        ) : (
+                          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-[#EAF2FF] text-[#2563EB]">
+                            <FileText className="h-7 w-7" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="font-bold text-sm text-[#142B4F] truncate">
+                              {att.title}
+                            </p>
+                            <Badge variant="outline" className="text-[10px] uppercase">
+                              {att.channel}
+                            </Badge>
+                          </div>
+                          <p className="text-xs font-semibold text-[#2563EB]">
+                            Enviado em {formatDateTimeBR(att.sentAtIso)}
+                          </p>
+                          <p className="text-[11px] text-[#64748B] truncate">
+                            {att.fileName} •{" "}
+                            {Math.max(1, Math.round(att.sizeBytes / 1024))} KB
+                          </p>
+                          {att.notes && (
+                            <p className="text-xs text-[#64748B] italic">
+                              {att.notes}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-100 pt-2">
+                        <Button size="sm" variant="outline" asChild>
+                          <a href={att.dataUrl} download={att.fileName}>
+                            <Download className="h-3.5 w-3.5" />
+                            Baixar
+                          </a>
+                        </Button>
+                        {shareWhats && (
+                          <Button size="sm" variant="ghost" asChild>
+                            <a
+                              href={shareWhats}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
+                              WhatsApp
+                            </a>
+                          </Button>
+                        )}
+                        {canWriteClients && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteAttachment(att.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: PLANO / ASSINATURA DO CLIENTE */}
+      {activeTab === "planos" && (
+        <div className="space-y-5">
+          {canWriteClients && (
+            <Card>
+              <CardContent className="p-5">
+                {availablePlans.length === 0 ? (
+                  <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-[#142B4F]">
+                        Nenhum plano de assinatura ativo cadastrado
+                      </p>
+                      <p className="text-xs text-[#64748B]">
+                        Crie planos no módulo Planos de Assinatura para vincular aos seus clientes.
+                      </p>
+                    </div>
+                    <Button size="sm" asChild>
+                      <Link href="/app/planos-assinatura">
+                        <Repeat className="h-4 w-4" />
+                        Criar planos de assinatura
+                      </Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleAssignSubscription} className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-[#142B4F]">
+                          Vincular plano de assinatura ao cliente
+                        </h3>
+                        <p className="text-xs text-[#64748B]">
+                          Ao agendar na Agenda, o sistema exibirá automaticamente o plano ativo e o dia de vencimento deste cliente.
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline" asChild>
+                        <Link href="/app/planos-assinatura">
+                          Gerenciar planos
+                        </Link>
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="cli-sub-plan">Plano *</Label>
+                        <select
+                          id="cli-sub-plan"
+                          value={selectedPlanId}
+                          onChange={(e) => {
+                            const nextId = e.target.value;
+                            setSelectedPlanId(nextId);
+                            const found = availablePlans.find(
+                              (p) => p.id === nextId
+                            );
+                            if (found) {
+                              setSubPaymentMethod(found.paymentMethod);
+                              setSubDueDay(found.billingDueDay);
+                            }
+                          }}
+                          className="flex h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#142B4F]"
+                          required
+                        >
+                          {availablePlans.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({formatCurrencyBRL(p.priceCents)}/mês)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label htmlFor="cli-sub-pay">Forma de pagamento</Label>
+                        <select
+                          id="cli-sub-pay"
+                          value={subPaymentMethod}
+                          onChange={(e) =>
+                            setSubPaymentMethod(
+                              e.target.value as typeof subPaymentMethod
+                            )
+                          }
+                          className="flex h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-[#142B4F]"
+                        >
+                          {Object.entries(PAYMENT_METHOD_LABELS).map(
+                            ([k, label]) => (
+                              <option key={k} value={k}>
+                                {label}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label htmlFor="cli-sub-due">Dia de vencimento</Label>
+                        <Input
+                          id="cli-sub-due"
+                          type="number"
+                          min={1}
+                          max={31}
+                          value={subDueDay}
+                          onChange={(e) => setSubDueDay(Number(e.target.value))}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="cli-sub-notes">Observações (opcional)</Label>
+                      <Input
+                        id="cli-sub-notes"
+                        placeholder="Ex.: Cliente paga via Pix automático todo dia 10"
+                        value={subNotes}
+                        onChange={(e) => setSubNotes(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex justify-end">
+                      <Button type="submit" disabled={savingSub}>
+                        {savingSub && (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        )}
+                        Vincular plano ativo
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {profile.subscriptions.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-10 text-center text-xs text-[#64748B]">
+                Este cliente ainda não possui nenhum plano de assinatura vinculado.
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {profile.subscriptions.map((sub) => (
+                <Card key={sub.id}>
+                  <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-extrabold text-[#142B4F]">
+                          {sub.planName}
+                        </p>
+                        <Badge
+                          variant={
+                            sub.status === "active"
+                              ? "success"
+                              : sub.status === "paused"
+                                ? "orange"
+                                : "outline"
+                          }
+                        >
+                          {sub.status === "active"
+                            ? "Ativo"
+                            : sub.status === "paused"
+                              ? "Pausado"
+                              : "Cancelado"}
+                        </Badge>
+                      </div>
+                      <p className="flex flex-wrap items-center gap-2 text-xs text-[#64748B]">
+                        <span className="font-bold text-[#2563EB]">
+                          {formatCurrencyBRL(sub.priceCents)}/mês
+                        </span>
+                        <span>•</span>
+                        <span className="inline-flex items-center gap-1 font-semibold text-[#C2410C]">
+                          <CalendarClock className="h-3.5 w-3.5" />
+                          Vencimento dia {sub.billingDueDay}
+                        </span>
+                        <span>•</span>
+                        <span>
+                          {PAYMENT_METHOD_LABELS[sub.paymentMethod] ??
+                            sub.paymentMethod}
+                        </span>
+                      </p>
+                      {sub.includedItems.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {sub.includedItems.map((it) => (
+                            <Badge
+                              key={`${it.itemType}-${it.itemId}`}
+                              variant="outline"
+                              className="text-[10px]"
+                            >
+                              {it.quantity}x {it.nameSnapshot}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      {sub.notes && (
+                        <p className="text-xs text-[#64748B] italic">
+                          {sub.notes}
+                        </p>
+                      )}
+                    </div>
+
+                    {canWriteClients && (
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        {sub.status !== "active" && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() =>
+                              handleSubscriptionStatus(sub.id, "active")
+                            }
+                          >
+                            Reativar
+                          </Button>
+                        )}
+                        {sub.status === "active" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              handleSubscriptionStatus(sub.id, "paused")
+                            }
+                          >
+                            Pausar
+                          </Button>
+                        )}
+                        {sub.status !== "cancelled" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              handleSubscriptionStatus(sub.id, "cancelled")
+                            }
+                          >
+                            Cancelar
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </div>
       )}

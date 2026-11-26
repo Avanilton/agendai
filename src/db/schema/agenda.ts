@@ -53,6 +53,8 @@ export const appointments = pgTable(
     status: appointmentStatusEnum("status").notNull().default("waiting"),
     isOverbooking: boolean("is_overbooking").notNull().default(false),
     source: appointmentSourceEnum("source").notNull().default("internal"),
+    recurrenceGroupId: uuid("recurrence_group_id"),
+    recurrenceRule: text("recurrence_rule"),
     notes: text("notes"),
     cancellationReason: text("cancellation_reason"),
     createdByUserId: uuid("created_by_user_id").references(() => users.id, {
