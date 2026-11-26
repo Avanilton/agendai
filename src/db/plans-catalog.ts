@@ -9,6 +9,7 @@ export interface PlanCatalogItem {
   isPopular: boolean;
   badgeText: string | null;
   sortOrder: number;
+  paymentUrl: string;
   features: string[];
   limits: {
     unlimitedRecords: boolean;
@@ -34,13 +35,14 @@ export const DEFAULT_PLANS_CATALOG: PlanCatalogItem[] = [
     slug: "individual",
     name: "Individual",
     description: "Ideal para profissionais autônomos que buscam organização total.",
-    priceCents: 5990,
-    referencePriceCents: 8990,
+    priceCents: 4990,
+    referencePriceCents: 6990,
     maxProfessionals: 1,
     storageLimitMb: 1024,
     isPopular: false,
     badgeText: null,
     sortOrder: 1,
+    paymentUrl: "https://mpago.la/1zvaM8q",
     features: ["1 profissional", "1 GB de armazenamento", ...COMMON_FEATURES],
     limits: {
       unlimitedRecords: true,
@@ -54,13 +56,14 @@ export const DEFAULT_PLANS_CATALOG: PlanCatalogItem[] = [
     slug: "equipe",
     name: "Equipe",
     description: "Perfeito para pequenos estúdios, salões e consultórios em crescimento.",
-    priceCents: 9990,
-    referencePriceCents: 12990,
+    priceCents: 8990,
+    referencePriceCents: 11990,
     maxProfessionals: 3,
     storageLimitMb: 2048,
     isPopular: false,
     badgeText: null,
     sortOrder: 2,
+    paymentUrl: "https://mpago.la/32KEmsu",
     features: [
       "Até 3 profissionais",
       "2 GB de armazenamento",
@@ -79,13 +82,14 @@ export const DEFAULT_PLANS_CATALOG: PlanCatalogItem[] = [
     slug: "profissional",
     name: "Profissional",
     description: "A escolha equilibrada para clínicas e estabelecimentos consolidados.",
-    priceCents: 12990,
-    referencePriceCents: 15990,
+    priceCents: 11990,
+    referencePriceCents: 12990,
     maxProfessionals: 5,
     storageLimitMb: 3072,
     isPopular: true,
     badgeText: "MAIS ESCOLHIDO",
     sortOrder: 3,
+    paymentUrl: "https://mpago.la/1iMhWR8",
     features: [
       "Até 5 profissionais",
       "3 GB de armazenamento",
@@ -104,13 +108,14 @@ export const DEFAULT_PLANS_CATALOG: PlanCatalogItem[] = [
     slug: "negocio",
     name: "Negócio",
     description: "Escala máxima para clínicas multiprofissionais e redes de atendimento.",
-    priceCents: 16990,
-    referencePriceCents: 19990,
+    priceCents: 14990,
+    referencePriceCents: 16990,
     maxProfessionals: 10,
     storageLimitMb: 5120,
     isPopular: false,
     badgeText: null,
     sortOrder: 4,
+    paymentUrl: "https://mpago.la/2NpZaKg",
     features: [
       "Até 10 profissionais",
       "5 GB de armazenamento",

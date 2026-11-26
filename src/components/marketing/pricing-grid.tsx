@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, Sparkles } from "lucide-react";
+import { Check, CreditCard, Sparkles } from "lucide-react";
 import type { PlanCatalogItem } from "@/db/plans-catalog";
 import { formatCurrencyBRL, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -75,16 +75,33 @@ export function PricingGrid({ plans }: PricingGridProps) {
               ))}
             </ul>
 
-            <Button
-              variant={plan.isPopular ? "default" : "outline"}
-              size="lg"
-              className="w-full"
-              asChild
-            >
-              <Link href={`/cadastro?plano=${plan.slug}`}>
-                Começar gratuitamente
-              </Link>
-            </Button>
+            <div className="space-y-2">
+              <Button
+                variant={plan.isPopular ? "default" : "accent"}
+                size="lg"
+                className="w-full"
+                asChild
+              >
+                <a
+                  href={plan.paymentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Assinar agora
+                </a>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                asChild
+              >
+                <Link href={`/cadastro?plano=${plan.slug}`}>
+                  Testar grátis por 14 dias
+                </Link>
+              </Button>
+            </div>
           </div>
         );
       })}

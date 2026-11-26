@@ -39,6 +39,10 @@ export async function getActivePlans(): Promise<PlanCatalogItem[]> {
       return DEFAULT_PLANS_CATALOG;
     }
 
+    const paymentUrlBySlug = new Map(
+      DEFAULT_PLANS_CATALOG.map((p) => [p.slug, p.paymentUrl])
+    );
+
     return rows.map((row) => ({
       slug: row.slug as PlanCatalogItem["slug"],
       name: row.name,
@@ -50,6 +54,9 @@ export async function getActivePlans(): Promise<PlanCatalogItem[]> {
       isPopular: row.isPopular,
       badgeText: row.badgeText,
       sortOrder: row.sortOrder,
+      paymentUrl:
+        paymentUrlBySlug.get(row.slug as PlanCatalogItem["slug"]) ??
+        `/cadastro?plano=${row.slug}`,
       features: row.features,
       limits: row.limits,
     }));
