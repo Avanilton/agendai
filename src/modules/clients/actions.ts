@@ -2,9 +2,39 @@
 
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/tenant/context";
+import { hasPermission } from "@/lib/permissions/evaluator";
 import type { ActionResult } from "@/modules/organizations/actions";
 import { clientInputSchema } from "./schemas";
 import { createClient, deleteClient, updateClient } from "./service";
+import {
+  getClientFullProfile,
+  type ClientFullProfile,
+} from "./profile-service";
+
+export async function getClientProfileAction(
+  clientId: string
+): Promise<ActionResult<ClientFullProfile>> {
+  try {
+    const ctx = await requirePermission("clients:read");
+    const profile = await getClientFullProfile({
+      organizationId: ctx.organizationId,
+      actorUserId: ctx.userId,
+      clientId,
+      canReadAppointments: hasPermission(ctx.permissions, "appointments:read"),
+      canReadRecords: hasPermission(ctx.permissions, "medical_records:read"),
+      canReadFinancial: hasPermission(ctx.permissions, "financial:read"),
+    });
+    return { success: true, data: profile };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Erro ao carregar ficha do cliente.",
+    };
+  }
+}
 
 export async function createClientAction(
   rawInput: unknown
@@ -26,6 +56,7 @@ export async function createClientAction(
     });
 
     revalidatePath("/app/clientes");
+    revalidatePath("/app/agenda");
     return { success: true, data: { id: created.id } };
   } catch (error) {
     return {
@@ -58,6 +89,8 @@ export async function updateClientAction(
     });
 
     revalidatePath("/app/clientes");
+    revalidatePath(`/app/clientes/${clientId}`);
+    revalidatePath("/app/agenda");
     return { success: true };
   } catch (error) {
     return {
@@ -80,6 +113,8 @@ export async function deleteClientAction(
     });
 
     revalidatePath("/app/clientes");
+    revalidatePath(`/app/clientes/${clientId}`);
+    revalidatePath("/app/agenda");
     return { success: true };
   } catch (error) {
     return {

@@ -48,7 +48,10 @@ export async function listAppointmentsInRange(params: {
       id: appointments.id,
       clientId: appointments.clientId,
       clientName: clients.name,
-      clientPhone: clients.whatsapp,
+      clientWhatsapp: clients.whatsapp,
+      clientPhoneRaw: clients.phone,
+      clientEmail: clients.email,
+      clientBirthDate: clients.birthDate,
       professionalId: appointments.professionalId,
       professionalName: professionals.name,
       professionalColor: professionals.color,
@@ -104,7 +107,133 @@ export async function listAppointmentsInRange(params: {
   }
 
   return rows.map((row) => ({
-    ...row,
+    id: row.id,
+    clientId: row.clientId,
+    clientName: row.clientName,
+    clientPhone: row.clientWhatsapp || row.clientPhoneRaw,
+    clientEmail: row.clientEmail,
+    clientBirthDate: row.clientBirthDate,
+    professionalId: row.professionalId,
+    professionalName: row.professionalName,
+    professionalColor: row.professionalColor,
+    startsAt: row.startsAt,
+    endsAt: row.endsAt,
+    durationMinutes: row.durationMinutes,
+    totalPriceCents: row.totalPriceCents,
+    status: row.status,
+    isOverbooking: row.isOverbooking,
+    source: row.source,
+    notes: row.notes,
+    cancellationReason: row.cancellationReason,
+    startsAtIso: row.startsAt.toISOString(),
+    endsAtIso: row.endsAt.toISOString(),
+    services: byAppt.get(row.id) ?? [],
+  }));
+}
+
+export async function listOpenFutureAppointments(organizationId: string) {
+  const db = getDb();
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const y = parts.find((p) => p.type === "year")?.value ?? "2026";
+  const m = parts.find((p) => p.type === "month")?.value ?? "01";
+  const d = parts.find((p) => p.type === "day")?.value ?? "01";
+  const startOfToday = new Date(`${y}-${m}-${d}T00:00:00-03:00`);
+
+  const rows = await db
+    .select({
+      id: appointments.id,
+      clientId: appointments.clientId,
+      clientName: clients.name,
+      clientWhatsapp: clients.whatsapp,
+      clientPhoneRaw: clients.phone,
+      clientEmail: clients.email,
+      clientBirthDate: clients.birthDate,
+      professionalId: appointments.professionalId,
+      professionalName: professionals.name,
+      professionalColor: professionals.color,
+      startsAt: appointments.startsAt,
+      endsAt: appointments.endsAt,
+      durationMinutes: appointments.durationMinutes,
+      totalPriceCents: appointments.totalPriceCents,
+      status: appointments.status,
+      isOverbooking: appointments.isOverbooking,
+      source: appointments.source,
+      notes: appointments.notes,
+      cancellationReason: appointments.cancellationReason,
+    })
+    .from(appointments)
+    .innerJoin(clients, eq(appointments.clientId, clients.id))
+    .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
+    .where(
+      and(
+        eq(appointments.organizationId, organizationId),
+        isNull(appointments.deletedAt),
+        gte(appointments.startsAt, startOfToday),
+        inArray(appointments.status, ["waiting", "confirmed", "in_progress"])
+      )
+    )
+    .orderBy(asc(appointments.startsAt))
+    .limit(100);
+
+  if (rows.length === 0) return [];
+
+  const apptIds = rows.map((r) => r.id);
+  const serviceLinks = await db
+    .select({
+      appointmentId: appointmentServices.appointmentId,
+      serviceId: appointmentServices.serviceId,
+      serviceName: appointmentServices.serviceNameSnapshot,
+      priceCents: appointmentServices.priceCents,
+      durationMinutes: appointmentServices.durationMinutes,
+    })
+    .from(appointmentServices)
+    .where(
+      and(
+        eq(appointmentServices.organizationId, organizationId),
+        inArray(appointmentServices.appointmentId, apptIds)
+      )
+    )
+    .orderBy(asc(appointmentServices.sortOrder));
+
+  const byAppt = new Map<
+    string,
+    { serviceId: string; serviceName: string; priceCents: number; durationMinutes: number }[]
+  >();
+  for (const link of serviceLinks) {
+    const list = byAppt.get(link.appointmentId) ?? [];
+    list.push({
+      serviceId: link.serviceId,
+      serviceName: link.serviceName,
+      priceCents: link.priceCents,
+      durationMinutes: link.durationMinutes,
+    });
+    byAppt.set(link.appointmentId, list);
+  }
+
+  return rows.map((row) => ({
+    id: row.id,
+    clientId: row.clientId,
+    clientName: row.clientName,
+    clientPhone: row.clientWhatsapp || row.clientPhoneRaw,
+    clientEmail: row.clientEmail,
+    clientBirthDate: row.clientBirthDate,
+    professionalId: row.professionalId,
+    professionalName: row.professionalName,
+    professionalColor: row.professionalColor,
+    startsAt: row.startsAt,
+    endsAt: row.endsAt,
+    durationMinutes: row.durationMinutes,
+    totalPriceCents: row.totalPriceCents,
+    status: row.status,
+    isOverbooking: row.isOverbooking,
+    source: row.source,
+    notes: row.notes,
+    cancellationReason: row.cancellationReason,
     startsAtIso: row.startsAt.toISOString(),
     endsAtIso: row.endsAt.toISOString(),
     services: byAppt.get(row.id) ?? [],

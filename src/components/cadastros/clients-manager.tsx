@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Cake,
+  Eye,
   Loader2,
   Pencil,
   Phone,
@@ -246,11 +248,17 @@ export function ClientsManager({
           {/* Mobile cards */}
           <div className="grid grid-cols-1 gap-3 md:hidden">
             {filtered.map((client) => (
-              <Card key={client.id}>
+              <Card
+                key={client.id}
+                onClick={() => router.push(`/app/clientes/${client.id}`)}
+                className="cursor-pointer transition-colors hover:border-[#2563EB]/50"
+              >
                 <CardContent className="p-4 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-bold text-[#142B4F]">{client.name}</p>
+                      <p className="font-bold text-[#142B4F] hover:text-[#2563EB]">
+                        {client.name}
+                      </p>
                       <p className="text-xs text-[#64748B]">
                         {client.phone || client.whatsapp || "Sem telefone"}
                       </p>
@@ -274,7 +282,16 @@ export function ClientsManager({
                   {client.email && (
                     <p className="text-xs text-[#64748B] truncate">{client.email}</p>
                   )}
-                  <div className="flex items-center justify-end gap-2 pt-2">
+                  <div
+                    className="flex items-center justify-end gap-2 pt-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Button size="sm" variant="secondary" asChild>
+                      <Link href={`/app/clientes/${client.id}`}>
+                        <Eye className="h-3.5 w-3.5" />
+                        Ver ficha
+                      </Link>
+                    </Button>
                     {canWrite && (
                       <Button size="sm" variant="outline" onClick={() => openEdit(client)}>
                         <Pencil className="h-3.5 w-3.5" />
@@ -307,9 +324,19 @@ export function ClientsManager({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.map((client) => (
-                    <tr key={client.id} className="hover:bg-slate-50/70">
+                    <tr
+                      key={client.id}
+                      onClick={() => router.push(`/app/clientes/${client.id}`)}
+                      className="cursor-pointer transition-colors hover:bg-[#EAF2FF]/40"
+                    >
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-[#142B4F]">{client.name}</p>
+                        <Link
+                          href={`/app/clientes/${client.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="font-semibold text-[#142B4F] hover:text-[#2563EB] hover:underline"
+                        >
+                          {client.name}
+                        </Link>
                         {client.birthDate && (
                           <p className="text-xs text-[#64748B]">
                             Nasc.: {client.birthDate.split("-").reverse().join("/")}
@@ -350,8 +377,22 @@ export function ClientsManager({
                               : "Inativo"}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td
+                        className="px-4 py-3 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <div className="inline-flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            asChild
+                            aria-label={`Ver ficha de ${client.name}`}
+                            title="Ver histórico completo do cliente"
+                          >
+                            <Link href={`/app/clientes/${client.id}`}>
+                              <Eye className="h-4 w-4 text-[#2563EB]" />
+                            </Link>
+                          </Button>
                           {canWrite && (
                             <Button
                               size="sm"

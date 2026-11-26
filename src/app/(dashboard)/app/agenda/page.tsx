@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/tenant/context";
 import { hasPermission } from "@/lib/permissions/evaluator";
 import {
   listAppointmentsInRange,
+  listOpenFutureAppointments,
   listScheduleBlocks,
 } from "@/modules/agenda/service";
 import { listClients } from "@/modules/clients/service";
@@ -19,20 +20,22 @@ export default async function AgendaPage() {
   }
 
   const now = new Date();
-  const rangeStart = new Date(now.getTime() - 30 * 24 * 60 * 60_000);
-  const rangeEnd = new Date(now.getTime() + 60 * 24 * 60 * 60_000);
+  const rangeStart = new Date(now.getTime() - 60 * 24 * 60 * 60_000);
+  const rangeEnd = new Date(now.getTime() + 90 * 24 * 60 * 60_000);
 
-  const [appts, blocks, clientRows, profRows, serviceRows] = await Promise.all([
-    listAppointmentsInRange({
-      organizationId: ctx.organizationId,
-      rangeStart,
-      rangeEnd,
-    }),
-    listScheduleBlocks(ctx.organizationId),
-    listClients(ctx.organizationId, { status: "active" }),
-    listProfessionals(ctx.organizationId),
-    listServices(ctx.organizationId),
-  ]);
+  const [appts, openFutureAppts, blocks, clientRows, profRows, serviceRows] =
+    await Promise.all([
+      listAppointmentsInRange({
+        organizationId: ctx.organizationId,
+        rangeStart,
+        rangeEnd,
+      }),
+      listOpenFutureAppointments(ctx.organizationId),
+      listScheduleBlocks(ctx.organizationId),
+      listClients(ctx.organizationId, { status: "active" }),
+      listProfessionals(ctx.organizationId),
+      listServices(ctx.organizationId),
+    ]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -45,6 +48,8 @@ export default async function AgendaPage() {
 
       <AgendaManager
         initialAppointments={appts}
+        openFutureAppointments={openFutureAppts}
+        organizationName={ctx.organizationName}
         scheduleBlocks={blocks.map((b) => ({
           id: b.id,
           professionalId: b.professionalId,
@@ -70,6 +75,7 @@ export default async function AgendaPage() {
         canWrite={hasPermission(ctx.permissions, "appointments:write")}
         canDelete={hasPermission(ctx.permissions, "appointments:delete")}
         canOverbook={hasPermission(ctx.permissions, "appointments:overbook")}
+        canWriteClients={hasPermission(ctx.permissions, "clients:write")}
       />
     </div>
   );

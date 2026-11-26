@@ -239,22 +239,19 @@ export function AgendaTimeGrid({
   }, [days, appointments, scheduleBlocks]);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
-      <div className="max-h-[68vh] overflow-auto">
-        <div
-          className={cn(
-            "relative",
-            !isSingleDay && "min-w-[680px]"
-          )}
-        >
+    <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+      <div className="max-h-[68vh] overflow-y-auto overflow-x-hidden">
+        <div className="relative w-full">
           {/* Sticky Header Row */}
           <div
-            className="sticky top-0 z-20 grid border-b border-slate-200 bg-white"
-            style={{
-              gridTemplateColumns: `60px repeat(${days.length}, minmax(0, 1fr))`,
-            }}
+            className={cn(
+              "sticky top-0 z-20 grid border-b border-slate-200 bg-white",
+              isSingleDay
+                ? "grid-cols-[52px_minmax(0,1fr)]"
+                : "grid-cols-[34px_repeat(7,minmax(0,1fr))] sm:grid-cols-[48px_repeat(7,minmax(0,1fr))]"
+            )}
           >
-            <div className="sticky left-0 z-30 flex items-center justify-center border-r border-slate-200 bg-white py-2.5 text-[11px] font-semibold text-[#64748B]">
+            <div className="flex items-center justify-center border-r border-slate-200 bg-white py-2 text-[10px] font-semibold text-[#64748B] sm:text-[11px]">
               Hora
             </div>
             {days.map((dKey) => {
@@ -266,14 +263,16 @@ export function AgendaTimeGrid({
                   type="button"
                   onClick={() => onSelectDay(dKey)}
                   className={cn(
-                    "flex flex-col items-center justify-center border-r border-slate-200 py-2 text-center transition-colors last:border-r-0 cursor-pointer",
+                    "flex min-w-0 flex-col items-center justify-center border-r border-slate-200 px-0.5 py-2 text-center transition-colors last:border-r-0 cursor-pointer sm:px-1",
                     isSelected
                       ? "bg-[#EAF2FF] text-[#2563EB]"
                       : "text-[#142B4F] hover:bg-slate-50"
                   )}
                 >
-                  <span className="text-xs font-bold">{weekday}</span>
-                  <span className="text-xs font-semibold opacity-80">
+                  <span className="truncate text-[10px] font-bold sm:text-xs">
+                    {weekday}
+                  </span>
+                  <span className="truncate text-[10px] font-semibold opacity-80 sm:text-xs">
                     {dayMonth}
                   </span>
                 </button>
@@ -283,19 +282,23 @@ export function AgendaTimeGrid({
 
           {/* Grid Body */}
           <div
-            className="grid"
+            className={cn(
+              "grid",
+              isSingleDay
+                ? "grid-cols-[52px_minmax(0,1fr)]"
+                : "grid-cols-[34px_repeat(7,minmax(0,1fr))] sm:grid-cols-[48px_repeat(7,minmax(0,1fr))]"
+            )}
             style={{
-              gridTemplateColumns: `60px repeat(${days.length}, minmax(0, 1fr))`,
               height: `${TOTAL_HEIGHT_PX}px`,
             }}
           >
             {/* Left Time Axis */}
-            <div className="sticky left-0 z-10 border-r border-slate-200 bg-white">
+            <div className="border-r border-slate-200 bg-white">
               {TIME_SLOTS.map((slot) => (
                 <div
                   key={slot.time24}
                   className={cn(
-                    "flex items-start justify-end pr-2 pt-1 text-[11px] font-medium text-[#64748B]",
+                    "flex items-start justify-end pr-1 pt-1 text-[10px] font-medium text-[#64748B] sm:pr-2 sm:text-[11px]",
                     slot.isHour
                       ? "border-t border-slate-200"
                       : "border-t border-dashed border-slate-100"
@@ -316,7 +319,7 @@ export function AgendaTimeGrid({
                 <div
                   key={dKey}
                   className={cn(
-                    "relative border-r border-slate-200 last:border-r-0",
+                    "relative min-w-0 border-r border-slate-200 last:border-r-0",
                     isSelected && !isSingleDay && "bg-[#EAF2FF]/20"
                   )}
                   style={{ height: `${TOTAL_HEIGHT_PX}px` }}
@@ -334,7 +337,7 @@ export function AgendaTimeGrid({
                           : undefined
                       }
                       className={cn(
-                        "group flex w-full items-center justify-end px-2 text-left transition-colors",
+                        "group flex w-full items-center justify-end px-1 text-left transition-colors sm:px-2",
                         slot.isHour
                           ? "border-t border-slate-200"
                           : "border-t border-dashed border-slate-100",
@@ -344,8 +347,10 @@ export function AgendaTimeGrid({
                     >
                       {canWrite && (
                         <span className="hidden items-center gap-0.5 text-[10px] font-semibold text-[#2563EB] group-hover:inline-flex">
-                          <Plus className="h-3 w-3" />
-                          {isSingleDay ? `Agendar ${slot.time24}` : slot.time24}
+                          <Plus className="h-3 w-3 shrink-0" />
+                          <span className={cn(!isSingleDay && "hidden sm:inline")}>
+                            {isSingleDay ? `Agendar ${slot.time24}` : slot.time24}
+                          </span>
                         </span>
                       )}
                     </button>
@@ -355,17 +360,17 @@ export function AgendaTimeGrid({
                   {entry.blocks.map(({ block, topPx, heightPx, timeLabel }) => (
                     <div
                       key={block.id}
-                      className="pointer-events-none absolute left-1 right-1 z-[5] overflow-hidden rounded-lg border border-slate-400/60 bg-slate-600/85 px-1.5 py-1 text-white shadow-xs"
+                      className="pointer-events-none absolute left-0.5 right-0.5 z-[5] overflow-hidden rounded-md border border-slate-400/60 bg-slate-600/85 px-1 py-0.5 text-white shadow-xs sm:left-1 sm:right-1 sm:rounded-lg sm:px-1.5 sm:py-1"
                       style={{
                         top: `${topPx + 1}px`,
                         height: `${heightPx}px`,
                       }}
                     >
-                      <p className="truncate text-[10px] font-bold leading-tight">
+                      <p className="truncate text-[9px] font-bold leading-tight sm:text-[10px]">
                         {timeLabel} •{" "}
                         {block.type === "holiday" ? "FERIADO" : "BLOQ"}
                       </p>
-                      <p className="truncate text-[10px] opacity-90 leading-tight">
+                      <p className="truncate text-[9px] opacity-90 leading-tight sm:text-[10px]">
                         {block.title}
                       </p>
                     </div>
@@ -387,28 +392,28 @@ export function AgendaTimeGrid({
                             onAppointmentClick(appt);
                           }}
                           className={cn(
-                            "absolute z-10 overflow-hidden rounded-lg border border-white/30 px-1.5 py-1 text-left text-white shadow-xs transition-transform hover:z-20 hover:brightness-105 cursor-pointer",
+                            "absolute z-10 overflow-hidden rounded-md border border-white/30 px-1 py-0.5 text-left text-white shadow-xs transition-transform hover:z-20 hover:brightness-105 cursor-pointer sm:rounded-lg sm:px-1.5 sm:py-1",
                             isCancelled && "opacity-55 line-through"
                           )}
                           style={{
                             top: `${topPx + 1}px`,
                             height: `${heightPx}px`,
-                            left: `calc(${leftPct}% + 2px)`,
-                            width: `calc(${widthPct}% - 4px)`,
+                            left: `calc(${leftPct}% + 1px)`,
+                            width: `calc(${widthPct}% - 2px)`,
                             backgroundColor: appt.professionalColor || "#2563EB",
                           }}
                         >
-                          <p className="truncate text-[10px] font-semibold leading-tight opacity-95">
+                          <p className="truncate text-[9px] font-semibold leading-tight opacity-95 sm:text-[10px]">
                             {toLocalTime(appt.startsAtIso)}
                             {isSingleDay
                               ? ` – ${toLocalTime(appt.endsAtIso)}`
                               : ""}
                           </p>
-                          <p className="truncate text-[11px] font-bold leading-tight">
+                          <p className="truncate text-[10px] font-bold leading-tight sm:text-[11px]">
                             {appt.clientName}
                           </p>
                           {heightPx >= 42 && (
-                            <p className="truncate text-[10px] leading-tight opacity-90">
+                            <p className="truncate text-[9px] leading-tight opacity-90 sm:text-[10px]">
                               {appt.services.map((s) => s.serviceName).join(", ") ||
                                 appt.professionalName}
                             </p>

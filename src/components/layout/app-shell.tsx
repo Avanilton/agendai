@@ -363,7 +363,7 @@ export function AppShell({
       {/* Main Content */}
       <div
         className={cn(
-          "flex flex-1 flex-col transition-all duration-200",
+          "flex min-w-0 flex-1 flex-col transition-all duration-200",
           desktopSidebarHidden ? "lg:pl-0" : "lg:pl-64"
         )}
       >
