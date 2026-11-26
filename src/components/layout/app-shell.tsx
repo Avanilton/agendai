@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   ArrowDownUp,
   BarChart3,
@@ -10,6 +11,7 @@ import {
   Building2,
   Calculator,
   Calendar,
+  ChevronDown,
   FileHeart,
   Layers,
   LayoutDashboard,
@@ -25,6 +27,7 @@ import {
   Settings,
   ShoppingBag,
   Truck,
+  User,
   Users,
   Wallet,
   X,
@@ -417,16 +420,75 @@ export function AppShell({
           </div>
 
           <div className="flex items-center gap-3">
-            <Link
-              href="/app/configuracoes?tab=perfil"
-              className="inline-flex items-center gap-2.5 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-slate-100"
-              title="Abrir perfil e configurações"
-            >
-              <Badge variant="default" className="hidden sm:inline-flex">
-                {user.roleName}
-              </Badge>
-              <UserAvatar name={user.name} image={user.image} size="md" />
-            </Link>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-full py-1 pl-2 pr-2 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] cursor-pointer"
+                  aria-label="Menu do perfil"
+                  title="Perfil e conta"
+                >
+                  <Badge variant="default" className="hidden sm:inline-flex">
+                    {user.roleName}
+                  </Badge>
+                  <UserAvatar name={user.name} image={user.image} size="md" />
+                  <ChevronDown className="h-3.5 w-3.5 text-[#64748B]" />
+                </button>
+              </DropdownMenu.Trigger>
+
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="end"
+                  sideOffset={8}
+                  className="z-50 w-60 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg animate-in fade-in-0 zoom-in-95"
+                >
+                  <div className="border-b border-slate-100 px-3 py-2.5">
+                    <p className="truncate text-sm font-bold text-[#142B4F]">
+                      {user.name}
+                    </p>
+                    <p className="truncate text-xs text-[#64748B]">
+                      {user.email}
+                    </p>
+                  </div>
+
+                  <div className="py-1">
+                    <DropdownMenu.Item asChild>
+                      <Link
+                        href="/app/configuracoes?tab=perfil"
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-[#142B4F] outline-none transition-colors hover:bg-[#EAF2FF] hover:text-[#2563EB] focus:bg-[#EAF2FF] focus:text-[#2563EB] cursor-pointer"
+                      >
+                        <User className="h-4 w-4" />
+                        Configuração do perfil
+                      </Link>
+                    </DropdownMenu.Item>
+
+                    <DropdownMenu.Item asChild>
+                      <Link
+                        href="/app/configuracoes"
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-[#142B4F] outline-none transition-colors hover:bg-[#EAF2FF] hover:text-[#2563EB] focus:bg-[#EAF2FF] focus:text-[#2563EB] cursor-pointer"
+                      >
+                        <Settings className="h-4 w-4" />
+                        Configurações gerais
+                      </Link>
+                    </DropdownMenu.Item>
+                  </div>
+
+                  <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
+
+                  <DropdownMenu.Item
+                    disabled={signingOut}
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      void handleSignOut();
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold text-red-600 outline-none transition-colors hover:bg-red-50 focus:bg-red-50 cursor-pointer disabled:opacity-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    {signingOut ? "Saindo..." : "Sair do sistema"}
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </header>
 

@@ -980,15 +980,6 @@ export function AgendaManager({
             onSlotClick={(dKey, startTime) => openCreate(dKey, startTime)}
             onAppointmentClick={(appt) => setDetailAppt(appt)}
           />
-
-          {dayAppointments.length > 0 && (
-            <div className="space-y-2.5 pt-2">
-              <p className="text-xs font-bold uppercase tracking-wide text-[#64748B]">
-                Ações rápidas do dia
-              </p>
-              {dayAppointments.map((appt) => renderAppointmentCard(appt))}
-            </div>
-          )}
         </div>
       )}
 
