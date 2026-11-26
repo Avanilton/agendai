@@ -8,6 +8,7 @@ import {
   appointmentInputSchema,
   scheduleBlockInputSchema,
 } from "@/modules/agenda/schemas";
+import { generateRecurrenceDates } from "@/modules/agenda/service";
 
 describe("Agenda Conflict Engine", () => {
   const t = (hm: string) => new Date(`2026-11-26T${hm}:00-03:00`);
@@ -118,6 +119,30 @@ describe("Multi-service Totals & Agenda Schemas", () => {
         endTime: "23:59",
       }).success
     ).toBe(true);
+  });
+
+  it("generates custom Livre recurrence dates for monthly day 15 and weekly Thursday", () => {
+    // Monthly on day 15 starting 2026-11-10 -> Nov 15, Dec 15, Jan 15
+    const monthlyDates = generateRecurrenceDates({
+      startDate: "2026-11-10",
+      frequency: "custom",
+      customUnit: "monthly",
+      customDayOfMonth: 15,
+      endType: "until_date",
+      untilDate: "2027-01-20",
+    });
+    expect(monthlyDates).toEqual(["2026-11-15", "2026-12-15", "2027-01-15"]);
+
+    // Weekly on Thursday (4) starting Monday 2026-11-23 -> Nov 26, Dec 03, Dec 10
+    const weeklyDates = generateRecurrenceDates({
+      startDate: "2026-11-23",
+      frequency: "custom",
+      customUnit: "weekly",
+      customDayOfWeek: 4,
+      endType: "until_date",
+      untilDate: "2026-12-12",
+    });
+    expect(weeklyDates).toEqual(["2026-11-26", "2026-12-03", "2026-12-10"]);
   });
 });
 

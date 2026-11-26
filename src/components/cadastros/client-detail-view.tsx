@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -34,6 +34,7 @@ import {
   deleteClientAttachmentAction,
   uploadClientAttachmentAction,
 } from "@/modules/clients/actions";
+import { deleteAppointmentsBulkAction } from "@/modules/agenda/actions";
 import {
   assignClientSubscriptionAction,
   updateClientSubscriptionStatusAction,
@@ -133,6 +134,7 @@ interface ClientDetailViewProps {
   availablePlans: SubscriptionPlanRow[];
   organizationName: string;
   canWriteClients: boolean;
+  canDeleteAppointments?: boolean;
 }
 
 export function ClientDetailView({
@@ -140,6 +142,7 @@ export function ClientDetailView({
   availablePlans,
   organizationName,
   canWriteClients,
+  canDeleteAppointments = false,
 }: ClientDetailViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -158,6 +161,108 @@ export function ClientDetailView({
 
   const [activeTab, setActiveTab] = useState<DetailTab>(initialTab);
   const [editOpen, setEditOpen] = useState(false);
+
+  // Appointments filter & bulk delete state
+  const [apptFilter, setApptFilter] = useState<"future" | "recurring" | "all">(
+    "future"
+  );
+  const [selectedApptIds, setSelectedApptIds] = useState<string[]>([]);
+  const [deletingAppts, setDeletingAppts] = useState(false);
+
+  const nowIsoRef = useMemo(() => new Date().toISOString(), []);
+
+  const filteredAppointments = useMemo(() => {
+    const list = profile.appointments.filter((a) => {
+      if (apptFilter === "future") {
+        return (
+          a.endsAtIso >= nowIsoRef &&
+          a.status !== "cancelled" &&
+          a.status !== "completed"
+        );
+      }
+      if (apptFilter === "recurring") {
+        return Boolean(a.recurrenceGroupId || a.recurrenceRule);
+      }
+      return true;
+    });
+    // For future/recurring, sort chronologically ascending so the next ones appear first
+    if (apptFilter === "future" || apptFilter === "recurring") {
+      return [...list].sort(
+        (a, b) =>
+          new Date(a.startsAtIso).getTime() - new Date(b.startsAtIso).getTime()
+      );
+    }
+    return list;
+  }, [profile.appointments, apptFilter, nowIsoRef]);
+
+  const futureApptCount = useMemo(
+    () =>
+      profile.appointments.filter(
+        (a) =>
+          a.endsAtIso >= nowIsoRef &&
+          a.status !== "cancelled" &&
+          a.status !== "completed"
+      ).length,
+    [profile.appointments, nowIsoRef]
+  );
+
+  const recurringApptCount = useMemo(
+    () =>
+      profile.appointments.filter((a) =>
+        Boolean(a.recurrenceGroupId || a.recurrenceRule)
+      ).length,
+    [profile.appointments]
+  );
+
+  function toggleSelectAppt(id: string) {
+    setSelectedApptIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  function toggleSelectAllVisible() {
+    const visibleIds = filteredAppointments.map((a) => a.id);
+    const allSelected =
+      visibleIds.length > 0 &&
+      visibleIds.every((id) => selectedApptIds.includes(id));
+    if (allSelected) {
+      setSelectedApptIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+    } else {
+      setSelectedApptIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  }
+
+  function selectRecurrenceSeries(groupId: string) {
+    const seriesIds = profile.appointments
+      .filter((a) => a.recurrenceGroupId === groupId)
+      .map((a) => a.id);
+    setSelectedApptIds((prev) => Array.from(new Set([...prev, ...seriesIds])));
+    toast.info(`${seriesIds.length} agendamento(s) da série selecionados.`);
+  }
+
+  async function handleBulkDeleteAppointments(idsToDelete: string[]) {
+    if (idsToDelete.length === 0) return;
+    const msg =
+      idsToDelete.length === 1
+        ? "Deseja excluir este agendamento?"
+        : `Deseja excluir ${idsToDelete.length} agendamentos selecionados de uma vez?`;
+    if (!window.confirm(msg)) return;
+
+    setDeletingAppts(true);
+    const res = await deleteAppointmentsBulkAction(idsToDelete, client.id);
+    setDeletingAppts(false);
+
+    if (!res.success) {
+      toast.error(res.error || "Erro ao excluir agendamentos.");
+      return;
+    }
+
+    setSelectedApptIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
+    toast.success(
+      `${res.data?.deletedCount ?? idsToDelete.length} agendamento(s) excluído(s).`
+    );
+    router.refresh();
+  }
 
   // Attachment upload state
   const [attTitle, setAttTitle] = useState("");
@@ -677,85 +782,232 @@ export function ClientDetailView({
         </Card>
       )}
 
-      {/* TAB: HISTÓRICO DE AGENDAMENTOS */}
+      {/* TAB: HISTÓRICO E GESTÃO DE AGENDAMENTOS */}
       {activeTab === "agendamentos" && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {!profile.permissions.canReadAppointments ? (
             <Card>
               <CardContent className="p-6 text-sm text-[#64748B]">
                 Você não possui permissão para visualizar o histórico de agendamentos.
               </CardContent>
             </Card>
-          ) : profile.appointments.length === 0 ? (
-            <Card className="border-dashed">
-              <CardContent className="flex flex-col items-center py-10 text-center">
-                <Calendar className="h-8 w-8 text-[#2563EB]" />
-                <p className="mt-2 font-bold text-[#142B4F]">
-                  Nenhum agendamento registrado
-                </p>
-                <p className="mt-1 text-xs text-[#64748B]">
-                  Os atendimentos deste cliente aparecerão aqui.
-                </p>
-              </CardContent>
-            </Card>
           ) : (
-            profile.appointments.map((appt) => {
-              const meta = APPT_STATUS_LABELS[appt.status] ?? {
-                label: appt.status,
-                className: "bg-slate-100 text-slate-700",
-              };
-              return (
-                <Card key={appt.id}>
-                  <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className="mt-0.5 h-10 w-2 rounded-full shrink-0"
-                        style={{ backgroundColor: appt.professionalColor }}
-                      />
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-bold text-[#142B4F]">
-                            {formatDateTimeBR(appt.startsAtIso)}
-                          </span>
-                          <span
-                            className={cn(
-                              "rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
-                              meta.className
-                            )}
-                          >
-                            {meta.label}
-                          </span>
-                          {appt.isOverbooking && (
-                            <Badge variant="orange" className="text-[10px]">
-                              Encaixe
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-[#64748B]">
-                          <strong className="text-[#142B4F]">
-                            {appt.professionalName}
-                          </strong>{" "}
-                          •{" "}
-                          {appt.services.map((s) => s.serviceName).join(", ") ||
-                            "Serviço"}{" "}
-                          ({appt.durationMinutes} min)
-                        </p>
-                        {appt.notes && (
-                          <p className="text-xs text-[#64748B] italic">
-                            Obs.: {appt.notes}
-                          </p>
+            <>
+              {/* Filter & Bulk Actions Bar */}
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(
+                    [
+                      ["future", "Futuros", futureApptCount],
+                      ["recurring", "Recorrentes", recurringApptCount],
+                      ["all", "Todos", profile.appointments.length],
+                    ] as const
+                  ).map(([key, label, count]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setApptFilter(key)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer",
+                        apptFilter === key
+                          ? "bg-[#2563EB] text-white"
+                          : "bg-[#F5F7FA] text-[#64748B] hover:text-[#142B4F]"
+                      )}
+                    >
+                      <span>{label}</span>
+                      <span
+                        className={cn(
+                          "rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none",
+                          apptFilter === key
+                            ? "bg-white/20 text-white"
+                            : "bg-white text-[#142B4F]"
                         )}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-extrabold text-[#2563EB]">
-                        {formatCurrencyBRL(appt.totalPriceCents)}
-                      </p>
-                    </div>
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {canDeleteAppointments && filteredAppointments.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={toggleSelectAllVisible}
+                    >
+                      {filteredAppointments.every((a) =>
+                        selectedApptIds.includes(a.id)
+                      )
+                        ? "Desmarcar todos"
+                        : `Selecionar todos (${filteredAppointments.length})`}
+                    </Button>
+
+                    {selectedApptIds.length > 0 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        disabled={deletingAppts}
+                        onClick={() =>
+                          handleBulkDeleteAppointments(selectedApptIds)
+                        }
+                      >
+                        {deletingAppts ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        Excluir selecionados ({selectedApptIds.length})
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {filteredAppointments.length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="flex flex-col items-center py-10 text-center">
+                    <Calendar className="h-8 w-8 text-[#2563EB]" />
+                    <p className="mt-2 font-bold text-[#142B4F]">
+                      {apptFilter === "future"
+                        ? "Nenhum agendamento futuro encontrado"
+                        : apptFilter === "recurring"
+                          ? "Nenhum agendamento recorrente encontrado"
+                          : "Nenhum agendamento registrado"}
+                    </p>
+                    <p className="mt-1 text-xs text-[#64748B]">
+                      Altere o filtro acima para ver outros atendimentos deste cliente.
+                    </p>
                   </CardContent>
                 </Card>
-              );
-            })
+              ) : (
+                <div className="space-y-2.5">
+                  {filteredAppointments.map((appt) => {
+                    const meta = APPT_STATUS_LABELS[appt.status] ?? {
+                      label: appt.status,
+                      className: "bg-slate-100 text-slate-700",
+                    };
+                    const isSelected = selectedApptIds.includes(appt.id);
+                    const isRecurring = Boolean(
+                      appt.recurrenceGroupId || appt.recurrenceRule
+                    );
+
+                    return (
+                      <Card
+                        key={appt.id}
+                        className={cn(
+                          isSelected &&
+                            "border-[#2563EB] bg-[#EAF2FF]/30 ring-1 ring-[#2563EB]/30"
+                        )}
+                      >
+                        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-start gap-3">
+                            {canDeleteAppointments && (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectAppt(appt.id)}
+                                aria-label={`Selecionar agendamento de ${formatDateTimeBR(appt.startsAtIso)}`}
+                                className="mt-1.5 h-4 w-4 rounded border-slate-300 text-[#2563EB] cursor-pointer"
+                              />
+                            )}
+                            <div
+                              className="mt-0.5 h-10 w-2 rounded-full shrink-0"
+                              style={{ backgroundColor: appt.professionalColor }}
+                            />
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-bold text-[#142B4F]">
+                                  {formatDateTimeBR(appt.startsAtIso)}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                                    meta.className
+                                  )}
+                                >
+                                  {meta.label}
+                                </span>
+                                {isRecurring && (
+                                  <Badge
+                                    variant="default"
+                                    className="text-[10px]"
+                                  >
+                                    <Repeat className="h-3 w-3" />
+                                    Recorrente
+                                  </Badge>
+                                )}
+                                {appt.isOverbooking && (
+                                  <Badge
+                                    variant="orange"
+                                    className="text-[10px]"
+                                  >
+                                    Encaixe
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-[#64748B]">
+                                <strong className="text-[#142B4F]">
+                                  {appt.professionalName}
+                                </strong>{" "}
+                                •{" "}
+                                {appt.services
+                                  .map((s) => s.serviceName)
+                                  .join(", ") || "Serviço"}{" "}
+                                ({appt.durationMinutes} min)
+                              </p>
+                              {appt.notes && (
+                                <p className="text-xs text-[#64748B] italic">
+                                  Obs.: {appt.notes}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <p className="text-sm font-extrabold text-[#2563EB]">
+                              {formatCurrencyBRL(appt.totalPriceCents)}
+                            </p>
+
+                            {canDeleteAppointments && appt.recurrenceGroupId && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  selectRecurrenceSeries(appt.recurrenceGroupId!)
+                                }
+                                title="Selecionar todos os agendamentos desta série recorrente"
+                              >
+                                <Repeat className="h-3.5 w-3.5" />
+                                Série
+                              </Button>
+                            )}
+
+                            {canDeleteAppointments && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={deletingAppts}
+                                onClick={() =>
+                                  handleBulkDeleteAppointments([appt.id])
+                                }
+                                title="Excluir este agendamento"
+                              >
+                                <Trash2 className="h-4 w-4 text-red-600" />
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

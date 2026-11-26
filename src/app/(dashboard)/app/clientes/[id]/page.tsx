@@ -44,6 +44,7 @@ export default async function ClientDetailPage({
         availablePlans={availablePlans}
         organizationName={ctx.organizationName}
         canWriteClients={hasPermission(ctx.permissions, "clients:write")}
+        canDeleteAppointments={hasPermission(ctx.permissions, "appointments:delete")}
       />
     </div>
   );

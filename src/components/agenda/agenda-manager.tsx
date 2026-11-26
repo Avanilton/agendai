@@ -345,7 +345,18 @@ export function AgendaManager({
     allowOverbooking: false,
     notes: "",
     recurrenceEnabled: false,
-    recurrenceFrequency: "weekly" as "daily" | "weekly" | "biweekly" | "monthly",
+    recurrenceFrequency: "weekly" as
+      | "daily"
+      | "weekly"
+      | "biweekly"
+      | "monthly"
+      | "custom",
+    recurrenceCustomUnit: "monthly" as "daily" | "weekly" | "monthly" | "yearly",
+    recurrenceCustomDayOfWeek: 4, // Quinta-feira
+    recurrenceCustomDayOfMonth: 15,
+    recurrenceCustomMonth: new Date().getMonth() + 1,
+    recurrenceCustomInterval: 1,
+    recurrenceCustomTime: "09:00",
     recurrenceEndType: "no_end" as "until_date" | "no_end",
     recurrenceUntilDate: "",
   });
@@ -404,6 +415,9 @@ export function AgendaManager({
   function openCreate(presetDate?: string, presetStartTime?: string) {
     setEditingId(null);
     const firstSvc = services[0];
+    const targetDate = presetDate || selectedDate;
+    const targetTime = presetStartTime || "09:00";
+    const parsedTarget = new Date(`${targetDate}T12:00:00-03:00`);
     setForm({
       clientId: clients[0]?.id ?? "",
       professionalId:
@@ -411,8 +425,8 @@ export function AgendaManager({
           ? professionalFilter
           : professionals[0]?.id ?? "",
       serviceIds: firstSvc ? [firstSvc.id] : [],
-      date: presetDate || selectedDate,
-      startTime: presetStartTime || "09:00",
+      date: targetDate,
+      startTime: targetTime,
       durationMinutes: firstSvc ? firstSvc.durationMinutes + firstSvc.bufferMinutes : 30,
       totalPriceReais: firstSvc ? firstSvc.priceCents / 100 : 0,
       status: "waiting",
@@ -420,6 +434,12 @@ export function AgendaManager({
       notes: "",
       recurrenceEnabled: false,
       recurrenceFrequency: "weekly",
+      recurrenceCustomUnit: "monthly",
+      recurrenceCustomDayOfWeek: parsedTarget.getDay(),
+      recurrenceCustomDayOfMonth: parsedTarget.getDate(),
+      recurrenceCustomMonth: parsedTarget.getMonth() + 1,
+      recurrenceCustomInterval: 1,
+      recurrenceCustomTime: targetTime,
       recurrenceEndType: "no_end",
       recurrenceUntilDate: "",
     });
@@ -428,12 +448,15 @@ export function AgendaManager({
 
   function openEdit(appt: AgendaAppointmentRow) {
     setEditingId(appt.id);
+    const startTime = toLocalTime(appt.startsAtIso);
+    const apptDate = toLocalDateKey(appt.startsAtIso);
+    const parsedAppt = new Date(`${apptDate}T12:00:00-03:00`);
     setForm({
       clientId: appt.clientId,
       professionalId: appt.professionalId,
       serviceIds: appt.services.map((s) => s.serviceId),
-      date: toLocalDateKey(appt.startsAtIso),
-      startTime: toLocalTime(appt.startsAtIso),
+      date: apptDate,
+      startTime,
       durationMinutes: appt.durationMinutes,
       totalPriceReais: appt.totalPriceCents / 100,
       status: appt.status,
@@ -441,6 +464,12 @@ export function AgendaManager({
       notes: appt.notes ?? "",
       recurrenceEnabled: false,
       recurrenceFrequency: "weekly",
+      recurrenceCustomUnit: "monthly",
+      recurrenceCustomDayOfWeek: parsedAppt.getDay(),
+      recurrenceCustomDayOfMonth: parsedAppt.getDate(),
+      recurrenceCustomMonth: parsedAppt.getMonth() + 1,
+      recurrenceCustomInterval: 1,
+      recurrenceCustomTime: startTime,
       recurrenceEndType: "no_end",
       recurrenceUntilDate: "",
     });
@@ -1441,69 +1470,278 @@ export function AgendaManager({
               </label>
 
               {form.recurrenceEnabled && (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="space-y-1">
-                    <Label htmlFor="a-rec-freq">Frequência</Label>
-                    <select
-                      id="a-rec-freq"
-                      value={form.recurrenceFrequency}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          recurrenceFrequency: e.target
-                            .value as typeof form.recurrenceFrequency,
-                        })
-                      }
-                      className="flex h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-[#142B4F]"
-                    >
-                      <option value="weekly">Semanal</option>
-                      <option value="biweekly">Quinzenal</option>
-                      <option value="monthly">Mensal</option>
-                      <option value="daily">Diária</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label htmlFor="a-rec-end">Término</Label>
-                    <select
-                      id="a-rec-end"
-                      value={form.recurrenceEndType}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          recurrenceEndType: e.target
-                            .value as typeof form.recurrenceEndType,
-                        })
-                      }
-                      className="flex h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-[#142B4F]"
-                    >
-                      <option value="no_end">Sem data final (contínuo)</option>
-                      <option value="until_date">Até uma data final</option>
-                    </select>
-                  </div>
-
-                  {form.recurrenceEndType === "until_date" ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div className="space-y-1">
-                      <Label htmlFor="a-rec-until">Data final *</Label>
-                      <Input
-                        id="a-rec-until"
-                        type="date"
-                        min={form.date}
-                        value={form.recurrenceUntilDate}
+                      <Label htmlFor="a-rec-freq">Frequência</Label>
+                      <select
+                        id="a-rec-freq"
+                        value={form.recurrenceFrequency}
                         onChange={(e) =>
                           setForm({
                             ...form,
-                            recurrenceUntilDate: e.target.value,
+                            recurrenceFrequency: e.target
+                              .value as typeof form.recurrenceFrequency,
+                            recurrenceCustomTime:
+                              form.recurrenceCustomTime || form.startTime,
                           })
                         }
-                        required
-                        className="h-9 text-xs"
-                      />
+                        className="flex h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-[#142B4F]"
+                      >
+                        <option value="weekly">Semanal</option>
+                        <option value="biweekly">Quinzenal</option>
+                        <option value="monthly">Mensal</option>
+                        <option value="daily">Diária</option>
+                        <option value="custom">Livre (personalizada)</option>
+                      </select>
                     </div>
-                  ) : (
-                    <div className="flex items-end">
-                      <p className="text-[11px] text-[#64748B]">
-                        Serão criadas as próximas 12 ocorrências automaticamente.
+
+                    <div className="space-y-1">
+                      <Label htmlFor="a-rec-end">Término</Label>
+                      <select
+                        id="a-rec-end"
+                        value={form.recurrenceEndType}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            recurrenceEndType: e.target
+                              .value as typeof form.recurrenceEndType,
+                          })
+                        }
+                        className="flex h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-[#142B4F]"
+                      >
+                        <option value="no_end">Sem data final (contínuo)</option>
+                        <option value="until_date">Até uma data final</option>
+                      </select>
+                    </div>
+
+                    {form.recurrenceEndType === "until_date" ? (
+                      <div className="space-y-1">
+                        <Label htmlFor="a-rec-until">Data final *</Label>
+                        <Input
+                          id="a-rec-until"
+                          type="date"
+                          min={form.date}
+                          value={form.recurrenceUntilDate}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              recurrenceUntilDate: e.target.value,
+                            })
+                          }
+                          required
+                          className="h-9 text-xs"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-end">
+                        <p className="text-[11px] text-[#64748B]">
+                          {form.recurrenceFrequency === "custom" &&
+                          form.recurrenceCustomUnit === "yearly"
+                            ? "Serão criadas as próximas 5 ocorrências anuais."
+                            : "Serão criadas as próximas 12 ocorrências automaticamente."}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Custom ("Livre") Recurrence Options */}
+                  {form.recurrenceFrequency === "custom" && (
+                    <div className="space-y-2.5 rounded-lg border border-[#2563EB]/25 bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-[#2563EB]">
+                        Configuração da Recorrência Livre
+                      </p>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="a-rec-custom-unit">Periodicidade</Label>
+                          <select
+                            id="a-rec-custom-unit"
+                            value={form.recurrenceCustomUnit}
+                            onChange={(e) =>
+                              setForm({
+                                ...form,
+                                recurrenceCustomUnit: e.target
+                                  .value as typeof form.recurrenceCustomUnit,
+                              })
+                            }
+                            className="flex h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-[#142B4F]"
+                          >
+                            <option value="monthly">Mensal (dia fixo)</option>
+                            <option value="weekly">Semanal (dia da semana)</option>
+                            <option value="yearly">Anual (mês e dia)</option>
+                            <option value="daily">Diária (intervalo)</option>
+                          </select>
+                        </div>
+
+                        {form.recurrenceCustomUnit === "monthly" && (
+                          <div className="space-y-1">
+                            <Label htmlFor="a-rec-custom-dom">Todo dia do mês</Label>
+                            <Input
+                              id="a-rec-custom-dom"
+                              type="number"
+                              min="1"
+                              max="31"
+                              value={form.recurrenceCustomDayOfMonth}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  recurrenceCustomDayOfMonth: Math.min(
+                                    31,
+                                    Math.max(1, Number(e.target.value) || 1)
+                                  ),
+                                })
+                              }
+                              className="h-9 text-xs"
+                            />
+                          </div>
+                        )}
+
+                        {form.recurrenceCustomUnit === "weekly" && (
+                          <div className="space-y-1">
+                            <Label htmlFor="a-rec-custom-dow">Dia da semana</Label>
+                            <select
+                              id="a-rec-custom-dow"
+                              value={form.recurrenceCustomDayOfWeek}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  recurrenceCustomDayOfWeek: Number(e.target.value),
+                                })
+                              }
+                              className="flex h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-[#142B4F]"
+                            >
+                              <option value={0}>Domingo</option>
+                              <option value={1}>Segunda-feira</option>
+                              <option value={2}>Terça-feira</option>
+                              <option value={3}>Quarta-feira</option>
+                              <option value={4}>Quinta-feira</option>
+                              <option value={5}>Sexta-feira</option>
+                              <option value={6}>Sábado</option>
+                            </select>
+                          </div>
+                        )}
+
+                        {form.recurrenceCustomUnit === "daily" && (
+                          <div className="space-y-1">
+                            <Label htmlFor="a-rec-custom-int">A cada (dias)</Label>
+                            <Input
+                              id="a-rec-custom-int"
+                              type="number"
+                              min="1"
+                              max="365"
+                              value={form.recurrenceCustomInterval}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  recurrenceCustomInterval: Math.max(
+                                    1,
+                                    Number(e.target.value) || 1
+                                  ),
+                                })
+                              }
+                              className="h-9 text-xs"
+                            />
+                          </div>
+                        )}
+
+                        {form.recurrenceCustomUnit === "yearly" && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label htmlFor="a-rec-custom-month">Mês</Label>
+                              <select
+                                id="a-rec-custom-month"
+                                value={form.recurrenceCustomMonth}
+                                onChange={(e) =>
+                                  setForm({
+                                    ...form,
+                                    recurrenceCustomMonth: Number(e.target.value),
+                                  })
+                                }
+                                className="flex h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-[#142B4F]"
+                              >
+                                {[
+                                  "Jan",
+                                  "Fev",
+                                  "Mar",
+                                  "Abr",
+                                  "Mai",
+                                  "Jun",
+                                  "Jul",
+                                  "Ago",
+                                  "Set",
+                                  "Out",
+                                  "Nov",
+                                  "Dez",
+                                ].map((mLabel, idx) => (
+                                  <option key={mLabel} value={idx + 1}>
+                                    {mLabel}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <Label htmlFor="a-rec-custom-ydom">Dia</Label>
+                              <Input
+                                id="a-rec-custom-ydom"
+                                type="number"
+                                min="1"
+                                max="31"
+                                value={form.recurrenceCustomDayOfMonth}
+                                onChange={(e) =>
+                                  setForm({
+                                    ...form,
+                                    recurrenceCustomDayOfMonth: Math.min(
+                                      31,
+                                      Math.max(1, Number(e.target.value) || 1)
+                                    ),
+                                  })
+                                }
+                                className="h-9 text-xs"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="space-y-1">
+                          <Label htmlFor="a-rec-custom-time">Horário fixo</Label>
+                          <Input
+                            id="a-rec-custom-time"
+                            type="time"
+                            value={form.recurrenceCustomTime}
+                            onChange={(e) =>
+                              setForm({
+                                ...form,
+                                recurrenceCustomTime: e.target.value,
+                              })
+                            }
+                            className="h-9 text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] font-medium text-[#142B4F]">
+                        Regra:{" "}
+                        <span className="text-[#2563EB]">
+                          {form.recurrenceCustomUnit === "monthly" &&
+                            `Todo dia ${form.recurrenceCustomDayOfMonth} de cada mês às ${form.recurrenceCustomTime || form.startTime}`}
+                          {form.recurrenceCustomUnit === "weekly" &&
+                            `Toda(o) ${
+                              [
+                                "domingo",
+                                "segunda-feira",
+                                "terça-feira",
+                                "quarta-feira",
+                                "quinta-feira",
+                                "sexta-feira",
+                                "sábado",
+                              ][form.recurrenceCustomDayOfWeek] ?? "semana"
+                            } às ${form.recurrenceCustomTime || form.startTime}`}
+                          {form.recurrenceCustomUnit === "daily" &&
+                            `A cada ${form.recurrenceCustomInterval} dia(s) às ${form.recurrenceCustomTime || form.startTime}`}
+                          {form.recurrenceCustomUnit === "yearly" &&
+                            `Todo ano no dia ${String(form.recurrenceCustomDayOfMonth).padStart(2, "0")}/${String(form.recurrenceCustomMonth).padStart(2, "0")} às ${form.recurrenceCustomTime || form.startTime}`}
+                        </span>
                       </p>
                     </div>
                   )}

@@ -7,7 +7,8 @@ export interface PermissionDefinition {
 
 export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { code: "dashboard:read", module: "dashboard", description: "Visualizar dashboard principal", isSensitive: false },
-  { code: "appointments:read", module: "agenda", description: "Visualizar agendamentos", isSensitive: false },
+  { code: "appointments:read", module: "agenda", description: "Visualizar própria agenda e agendamentos", isSensitive: false },
+  { code: "appointments:read_all", module: "agenda", description: "Visualizar agenda de todos os profissionais da empresa", isSensitive: false },
   { code: "appointments:write", module: "agenda", description: "Criar, editar e reagendar agendamentos", isSensitive: false },
   { code: "appointments:delete", module: "agenda", description: "Cancelar e excluir agendamentos", isSensitive: false },
   { code: "appointments:overbook", module: "agenda", description: "Permitir encaixe em horários já ocupados", isSensitive: false },
@@ -66,6 +67,7 @@ export const DEFAULT_ROLE_TEMPLATES: RoleTemplate[] = [
     permissions: [
       "dashboard:read",
       "appointments:read",
+      "appointments:read_all",
       "appointments:write",
       "appointments:delete",
       "appointments:overbook",
@@ -84,12 +86,25 @@ export const DEFAULT_ROLE_TEMPLATES: RoleTemplate[] = [
     ],
   },
   {
+    slug: "employee",
+    name: "Funcionário",
+    description: "Acesso controlado por telas e funcionalidades; por padrão visualiza apenas a própria agenda.",
+    permissions: [
+      "dashboard:read",
+      "appointments:read",
+      "appointments:write",
+      "clients:read",
+      "services:read",
+    ],
+  },
+  {
     slug: "receptionist",
     name: "Recepcionista",
     description: "Atendimento de balcão, agenda e cadastro básico de clientes (sem acesso a dados médicos).",
     permissions: [
       "dashboard:read",
       "appointments:read",
+      "appointments:read_all",
       "appointments:write",
       "clients:read",
       "clients:write",

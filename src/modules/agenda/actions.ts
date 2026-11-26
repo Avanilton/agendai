@@ -13,6 +13,7 @@ import {
 import {
   createOrUpdateAppointment,
   createScheduleBlock,
+  deleteAppointmentsBulk,
   deleteScheduleBlock,
   saveAvailabilityRules,
   updateAppointmentStatus,
@@ -116,6 +117,45 @@ export async function updateAppointmentStatusAction(
       success: false,
       error:
         error instanceof Error ? error.message : "Erro ao alterar status.",
+    };
+  }
+}
+
+export async function deleteAppointmentsBulkAction(
+  appointmentIds: string[],
+  clientId?: string
+): Promise<ActionResult<{ deletedCount: number }>> {
+  try {
+    const ctx = await requirePermission("appointments:delete");
+    const ids = Array.isArray(appointmentIds)
+      ? appointmentIds.filter((id) => typeof id === "string" && id.length > 0)
+      : [];
+
+    if (ids.length === 0) {
+      return {
+        success: false,
+        error: "Selecione ao menos um agendamento para excluir.",
+      };
+    }
+
+    const result = await deleteAppointmentsBulk({
+      organizationId: ctx.organizationId,
+      actorUserId: ctx.userId,
+      appointmentIds: ids,
+    });
+
+    revalidatePath("/app/agenda");
+    if (clientId) {
+      revalidatePath(`/app/clientes/${clientId}`);
+    }
+    return { success: true, data: result };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Erro ao excluir agendamentos.",
     };
   }
 }

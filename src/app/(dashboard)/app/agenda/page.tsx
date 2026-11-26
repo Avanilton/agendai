@@ -24,34 +24,66 @@ export default async function AgendaPage() {
   const rangeStart = new Date(now.getTime() - 60 * 24 * 60 * 60_000);
   const rangeEnd = new Date(now.getTime() + 90 * 24 * 60 * 60_000);
 
-  const [
-    appts,
-    openFutureAppts,
-    blocks,
-    clientRows,
-    profRows,
-    serviceRows,
-    clientSubscriptionsMap,
-  ] = await Promise.all([
-    listAppointmentsInRange({
-      organizationId: ctx.organizationId,
-      rangeStart,
-      rangeEnd,
-    }),
-    listOpenFutureAppointments(ctx.organizationId),
-    listScheduleBlocks(ctx.organizationId),
-    listClients(ctx.organizationId, { status: "active" }),
-    listProfessionals(ctx.organizationId),
-    listServices(ctx.organizationId),
-    listActiveClientSubscriptionsMap(ctx.organizationId),
-  ]);
+  const canReadAllAgenda =
+    hasPermission(ctx.permissions, "appointments:read_all") ||
+    ctx.roleSlug === "owner" ||
+    ctx.roleSlug === "admin";
+
+  const [profRows, clientRows, serviceRows, clientSubscriptionsMap] =
+    await Promise.all([
+      listProfessionals(ctx.organizationId),
+      listClients(ctx.organizationId, { status: "active" }),
+      listServices(ctx.organizationId),
+      listActiveClientSubscriptionsMap(ctx.organizationId),
+    ]);
+
+  const activeProfessionals = profRows.filter((p) => p.status === "active");
+  const ownProfessional = activeProfessionals.find(
+    (p) => p.userId === ctx.userId
+  );
+
+  // Strict server-side isolation: employees without appointments:read_all only see their own agenda
+  const restrictedProfessionalId = canReadAllAgenda
+    ? undefined
+    : ownProfessional?.id;
+  const hasNoLinkedProfessional = !canReadAllAgenda && !ownProfessional;
+
+  const [appts, openFutureAppts, blocks] = hasNoLinkedProfessional
+    ? [[], [], []]
+    : await Promise.all([
+        listAppointmentsInRange({
+          organizationId: ctx.organizationId,
+          rangeStart,
+          rangeEnd,
+          professionalId: restrictedProfessionalId,
+        }),
+        listOpenFutureAppointments(
+          ctx.organizationId,
+          restrictedProfessionalId
+        ),
+        listScheduleBlocks(ctx.organizationId),
+      ]);
+
+  const visibleBlocks = canReadAllAgenda
+    ? blocks
+    : blocks.filter(
+        (b) => !b.professionalId || b.professionalId === ownProfessional?.id
+      );
+
+  const visibleProfessionals = canReadAllAgenda
+    ? activeProfessionals
+    : ownProfessional
+      ? [ownProfessional]
+      : [];
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold text-[#142B4F]">Agenda</h1>
         <p className="text-sm text-[#64748B]">
-          Visualize por dia, semana, mês ou lista com detecção automática de conflitos.
+          {canReadAllAgenda
+            ? "Visualize por dia, semana, mês ou lista com detecção automática de conflitos."
+            : "Visualizando exclusivamente a sua agenda individual."}
         </p>
       </div>
 
@@ -60,7 +92,7 @@ export default async function AgendaPage() {
         openFutureAppointments={openFutureAppts}
         clientSubscriptions={clientSubscriptionsMap}
         organizationName={ctx.organizationName}
-        scheduleBlocks={blocks.map((b) => ({
+        scheduleBlocks={visibleBlocks.map((b) => ({
           id: b.id,
           professionalId: b.professionalId,
           professionalName: b.professionalName,
@@ -70,9 +102,11 @@ export default async function AgendaPage() {
           endsAtIso: b.endsAt.toISOString(),
         }))}
         clients={clientRows.map((c) => ({ id: c.id, name: c.name }))}
-        professionals={profRows
-          .filter((p) => p.status === "active")
-          .map((p) => ({ id: p.id, name: p.name, color: p.color }))}
+        professionals={visibleProfessionals.map((p) => ({
+          id: p.id,
+          name: p.name,
+          color: p.color,
+        }))}
         services={serviceRows
           .filter((s) => s.status === "active")
           .map((s) => ({

@@ -14,6 +14,7 @@ import {
   Moon,
   QrCode,
   Shield,
+  ShieldCheck,
   SlidersHorizontal,
   Sun,
   Upload,
@@ -35,6 +36,8 @@ import { UserAvatar } from "@/components/settings/user-avatar";
 import {
   IntegrationsHub,
 } from "@/components/integrations/integrations-hub";
+import { PermissionsManager } from "@/components/settings/permissions-manager";
+import type { PermissionsManagementData } from "@/modules/permissions/service";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -55,6 +58,7 @@ type IntegrationsData = Awaited<ReturnType<typeof getIntegrationsWorkspaceData>>
 type SettingsTab =
   | "perfil"
   | "preferencias"
+  | "permissoes"
   | "senha"
   | "integracoes"
   | "exportacao"
@@ -82,12 +86,17 @@ interface GeneralSettingsProps {
     canReadFinancial: boolean;
     canReadAppointments: boolean;
   };
+  permissionsManagement: {
+    enabled: boolean;
+    data: PermissionsManagementData | null;
+  };
 }
 
 export function GeneralSettings({
   user,
   integrations,
   exportPermissions,
+  permissionsManagement,
 }: GeneralSettingsProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -101,6 +110,7 @@ export function GeneralSettings({
   const validTabs: SettingsTab[] = [
     "perfil",
     "preferencias",
+    ...(permissionsManagement.enabled ? (["permissoes"] as const) : []),
     "senha",
     ...(integrations.enabled ? (["integracoes"] as const) : []),
     ...(canExportAny ? (["exportacao"] as const) : []),
@@ -272,6 +282,9 @@ export function GeneralSettings({
   }[] = [
     { id: "perfil", label: "Perfil e Avatar", icon: User },
     { id: "preferencias", label: "Preferências", icon: SlidersHorizontal },
+    ...(permissionsManagement.enabled
+      ? [{ id: "permissoes" as const, label: "Permissões e Perfis", icon: ShieldCheck }]
+      : []),
     { id: "senha", label: "Alterar Senha", icon: KeyRound },
     ...(integrations.enabled
       ? [{ id: "integracoes" as const, label: "Integrações (Pix/NFS-e)", icon: QrCode }]
@@ -747,6 +760,16 @@ export function GeneralSettings({
           </CardContent>
         </Card>
       )}
+
+      {/* TAB: PERMISSÕES E PERFIS */}
+      {activeTab === "permissoes" &&
+        permissionsManagement.enabled &&
+        permissionsManagement.data && (
+          <PermissionsManager
+            data={permissionsManagement.data}
+            currentUserEmail={user.email}
+          />
+        )}
 
       {/* TAB: SEGURANÇA E SESSÕES ATIVAS */}
       {activeTab === "seguranca" && (

@@ -54,6 +54,8 @@ export interface ClientProfileAppointment {
   totalPriceCents: number;
   status: AppointmentStatus;
   isOverbooking: boolean;
+  recurrenceGroupId: string | null;
+  recurrenceRule: string | null;
   notes: string | null;
   services: {
     serviceId: string;
@@ -235,6 +237,8 @@ export async function getClientFullProfile(params: {
             totalPriceCents: appointments.totalPriceCents,
             status: appointments.status,
             isOverbooking: appointments.isOverbooking,
+            recurrenceGroupId: appointments.recurrenceGroupId,
+            recurrenceRule: appointments.recurrenceRule,
             notes: appointments.notes,
           })
           .from(appointments)
@@ -250,7 +254,7 @@ export async function getClientFullProfile(params: {
             )
           )
           .orderBy(desc(appointments.startsAt))
-          .limit(100)
+          .limit(250)
       : Promise.resolve([]),
     canReadRecords
       ? db
@@ -502,6 +506,8 @@ export async function getClientFullProfile(params: {
     totalPriceCents: a.totalPriceCents,
     status: a.status,
     isOverbooking: a.isOverbooking,
+    recurrenceGroupId: a.recurrenceGroupId,
+    recurrenceRule: a.recurrenceRule,
     notes: a.notes,
     services: servicesByAppt.get(a.id) ?? [],
   }));

@@ -135,7 +135,10 @@ export async function listAppointmentsInRange(params: {
   }));
 }
 
-export async function listOpenFutureAppointments(organizationId: string) {
+export async function listOpenFutureAppointments(
+  organizationId: string,
+  professionalId?: string
+) {
   const db = getDb();
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
@@ -147,6 +150,17 @@ export async function listOpenFutureAppointments(organizationId: string) {
   const m = parts.find((p) => p.type === "month")?.value ?? "01";
   const d = parts.find((p) => p.type === "day")?.value ?? "01";
   const startOfToday = new Date(`${y}-${m}-${d}T00:00:00-03:00`);
+
+  const conditions = [
+    eq(appointments.organizationId, organizationId),
+    isNull(appointments.deletedAt),
+    gte(appointments.startsAt, startOfToday),
+    inArray(appointments.status, ["waiting", "confirmed", "in_progress"]),
+  ];
+
+  if (professionalId) {
+    conditions.push(eq(appointments.professionalId, professionalId));
+  }
 
   const rows = await db
     .select({
@@ -175,14 +189,7 @@ export async function listOpenFutureAppointments(organizationId: string) {
     .from(appointments)
     .innerJoin(clients, eq(appointments.clientId, clients.id))
     .innerJoin(professionals, eq(appointments.professionalId, professionals.id))
-    .where(
-      and(
-        eq(appointments.organizationId, organizationId),
-        isNull(appointments.deletedAt),
-        gte(appointments.startsAt, startOfToday),
-        inArray(appointments.status, ["waiting", "confirmed", "in_progress"])
-      )
-    )
+    .where(and(...conditions))
     .orderBy(asc(appointments.startsAt))
     .limit(100);
 
@@ -248,19 +255,130 @@ export async function listOpenFutureAppointments(organizationId: string) {
   }));
 }
 
-function generateRecurrenceDates(params: {
+function formatUtcDateKey(date: Date): string {
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export function generateRecurrenceDates(params: {
   startDate: string;
-  frequency: "daily" | "weekly" | "biweekly" | "monthly";
+  frequency: "daily" | "weekly" | "biweekly" | "monthly" | "custom";
   endType: "until_date" | "no_end";
   untilDate?: string;
+  customUnit?: "daily" | "weekly" | "monthly" | "yearly";
+  customDayOfWeek?: number;
+  customDayOfMonth?: number;
+  customMonth?: number;
+  customInterval?: number;
 }): string[] {
-  const { startDate, frequency, endType, untilDate } = params;
-  const maxOccurrences = endType === "no_end" ? 12 : 52;
-  const dates: string[] = [startDate];
+  const {
+    startDate,
+    frequency,
+    endType,
+    untilDate,
+    customUnit = "monthly",
+    customDayOfWeek,
+    customDayOfMonth,
+    customMonth,
+    customInterval = 1,
+  } = params;
+  const maxOccurrences =
+    frequency === "custom" && customUnit === "yearly"
+      ? endType === "no_end"
+        ? 5
+        : 15
+      : endType === "no_end"
+        ? 12
+        : 52;
 
   const [y0, m0, d0] = startDate.split("-").map(Number);
-  if (!y0 || !m0 || !d0) return dates;
+  if (!y0 || !m0 || !d0) return [startDate];
 
+  const dates: string[] = [];
+
+  if (frequency === "custom") {
+    if (customUnit === "daily") {
+      const step = Math.max(1, customInterval);
+      for (let i = 0; i < maxOccurrences; i++) {
+        const nextDate = new Date(Date.UTC(y0, m0 - 1, d0 + i * step, 15, 0, 0));
+        const key = formatUtcDateKey(nextDate);
+        if (endType === "until_date" && untilDate && key > untilDate) break;
+        dates.push(key);
+      }
+      return dates.length > 0 ? dates : [startDate];
+    }
+
+    if (customUnit === "weekly") {
+      const baseDate = new Date(Date.UTC(y0, m0 - 1, d0, 15, 0, 0));
+      const baseDow = baseDate.getUTCDay();
+      const targetDow =
+        customDayOfWeek !== undefined ? customDayOfWeek : baseDow;
+      const offsetDays = (targetDow - baseDow + 7) % 7;
+
+      for (let i = 0; i < maxOccurrences; i++) {
+        const nextDate = new Date(
+          Date.UTC(y0, m0 - 1, d0 + offsetDays + i * 7, 15, 0, 0)
+        );
+        const key = formatUtcDateKey(nextDate);
+        if (endType === "until_date" && untilDate && key > untilDate) break;
+        dates.push(key);
+      }
+      return dates.length > 0 ? dates : [startDate];
+    }
+
+    if (customUnit === "monthly") {
+      const targetDay = Math.min(31, Math.max(1, customDayOfMonth ?? d0));
+      const startMonthOffset = targetDay < d0 ? 1 : 0;
+
+      for (let i = 0; i < maxOccurrences; i++) {
+        const totalMonth = m0 - 1 + startMonthOffset + i;
+        const targetYear = y0 + Math.floor(totalMonth / 12);
+        const normMonth = ((totalMonth % 12) + 12) % 12;
+        const lastDay = new Date(
+          Date.UTC(targetYear, normMonth + 1, 0)
+        ).getUTCDate();
+        const nextDate = new Date(
+          Date.UTC(targetYear, normMonth, Math.min(targetDay, lastDay), 15, 0, 0)
+        );
+        const key = formatUtcDateKey(nextDate);
+        if (endType === "until_date" && untilDate && key > untilDate) break;
+        dates.push(key);
+      }
+      return dates.length > 0 ? dates : [startDate];
+    }
+
+    if (customUnit === "yearly") {
+      const targetMonth = Math.min(12, Math.max(1, customMonth ?? m0));
+      const targetDay = Math.min(31, Math.max(1, customDayOfMonth ?? d0));
+      const firstYearOffset =
+        targetMonth < m0 || (targetMonth === m0 && targetDay < d0) ? 1 : 0;
+
+      for (let i = 0; i < maxOccurrences; i++) {
+        const targetYear = y0 + firstYearOffset + i;
+        const lastDay = new Date(
+          Date.UTC(targetYear, targetMonth, 0)
+        ).getUTCDate();
+        const nextDate = new Date(
+          Date.UTC(
+            targetYear,
+            targetMonth - 1,
+            Math.min(targetDay, lastDay),
+            15,
+            0,
+            0
+          )
+        );
+        const key = formatUtcDateKey(nextDate);
+        if (endType === "until_date" && untilDate && key > untilDate) break;
+        dates.push(key);
+      }
+      return dates.length > 0 ? dates : [startDate];
+    }
+  }
+
+  dates.push(startDate);
   for (let i = 1; i < maxOccurrences; i++) {
     let nextDate: Date;
     if (frequency === "monthly") {
@@ -277,10 +395,7 @@ function generateRecurrenceDates(params: {
       nextDate = new Date(Date.UTC(y0, m0 - 1, d0 + i * stepDays, 15, 0, 0));
     }
 
-    const yyyy = nextDate.getUTCFullYear();
-    const mm = String(nextDate.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(nextDate.getUTCDate()).padStart(2, "0");
-    const key = `${yyyy}-${mm}-${dd}`;
+    const key = formatUtcDateKey(nextDate);
 
     if (endType === "until_date" && untilDate && key > untilDate) {
       break;
@@ -354,6 +469,14 @@ export async function createOrUpdateAppointment(params: {
       ? Math.round(input.totalPriceReais * 100)
       : computed.totalPriceCents;
 
+  const effectiveStartTime =
+    !appointmentId &&
+    input.recurrenceEnabled &&
+    input.recurrenceFrequency === "custom" &&
+    input.recurrenceCustomTime
+      ? input.recurrenceCustomTime
+      : input.startTime;
+
   const occurrenceDates =
     !appointmentId && input.recurrenceEnabled
       ? generateRecurrenceDates({
@@ -361,6 +484,11 @@ export async function createOrUpdateAppointment(params: {
           frequency: input.recurrenceFrequency ?? "weekly",
           endType: input.recurrenceEndType ?? "no_end",
           untilDate: input.recurrenceUntilDate || undefined,
+          customUnit: input.recurrenceCustomUnit,
+          customDayOfWeek: input.recurrenceCustomDayOfWeek,
+          customDayOfMonth: input.recurrenceCustomDayOfMonth,
+          customMonth: input.recurrenceCustomMonth,
+          customInterval: input.recurrenceCustomInterval,
         })
       : [input.date];
 
@@ -368,9 +496,15 @@ export async function createOrUpdateAppointment(params: {
     !appointmentId && input.recurrenceEnabled && occurrenceDates.length > 1
       ? crypto.randomUUID()
       : null;
+  const recurrenceEndSuffix =
+    input.recurrenceEndType === "until_date" && input.recurrenceUntilDate
+      ? input.recurrenceUntilDate
+      : "no_end";
   const recurrenceRule =
     !appointmentId && input.recurrenceEnabled
-      ? `${input.recurrenceFrequency ?? "weekly"}:${input.recurrenceEndType === "until_date" && input.recurrenceUntilDate ? input.recurrenceUntilDate : "no_end"}`
+      ? input.recurrenceFrequency === "custom"
+        ? `custom:${input.recurrenceCustomUnit ?? "monthly"}:dow=${input.recurrenceCustomDayOfWeek ?? ""}:dom=${input.recurrenceCustomDayOfMonth ?? ""}:m=${input.recurrenceCustomMonth ?? ""}:int=${input.recurrenceCustomInterval ?? 1}:t=${effectiveStartTime}:${recurrenceEndSuffix}`
+        : `${input.recurrenceFrequency ?? "weekly"}:${recurrenceEndSuffix}`
       : null;
 
   let firstSavedId: string | undefined = appointmentId;
@@ -379,7 +513,7 @@ export async function createOrUpdateAppointment(params: {
 
   for (let idx = 0; idx < occurrenceDates.length; idx++) {
     const occDate = occurrenceDates[idx]!;
-    const startsAt = buildBrazilTimestamp(occDate, input.startTime);
+    const startsAt = buildBrazilTimestamp(occDate, effectiveStartTime);
     const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
 
     const dayStart = new Date(startsAt.getTime() - 24 * 60 * 60_000);
@@ -579,6 +713,57 @@ export async function updateAppointmentStatus(params: {
     resourceId: appointmentId,
     metadata: { status },
   });
+}
+
+export async function deleteAppointmentsBulk(params: {
+  organizationId: string;
+  actorUserId: string;
+  appointmentIds: string[];
+}): Promise<{ deletedCount: number }> {
+  const db = getDb();
+  const { organizationId, actorUserId, appointmentIds } = params;
+  const uniqueIds = Array.from(new Set(appointmentIds));
+  if (uniqueIds.length === 0) return { deletedCount: 0 };
+
+  const existing = await db
+    .select({ id: appointments.id })
+    .from(appointments)
+    .where(
+      and(
+        eq(appointments.organizationId, organizationId),
+        inArray(appointments.id, uniqueIds),
+        isNull(appointments.deletedAt)
+      )
+    );
+
+  if (existing.length === 0) return { deletedCount: 0 };
+
+  const verifiedIds = existing.map((e) => e.id);
+  const now = new Date();
+
+  await db
+    .update(appointments)
+    .set({
+      deletedAt: now,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(appointments.organizationId, organizationId),
+        inArray(appointments.id, verifiedIds)
+      )
+    );
+
+  await logAudit({
+    organizationId,
+    actorUserId,
+    action: "appointment.bulk_deleted",
+    resourceType: "appointment",
+    resourceId: verifiedIds[0]!,
+    metadata: { deletedCount: verifiedIds.length },
+  });
+
+  return { deletedCount: verifiedIds.length };
 }
 
 export async function listAvailabilityRules(

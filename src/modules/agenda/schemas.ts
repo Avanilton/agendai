@@ -36,9 +36,22 @@ export const appointmentInputSchema = z.object({
   notes: z.string().trim().max(1000).optional().or(z.literal("")),
   recurrenceEnabled: z.boolean().optional().default(false),
   recurrenceFrequency: z
-    .enum(["daily", "weekly", "biweekly", "monthly"])
+    .enum(["daily", "weekly", "biweekly", "monthly", "custom"])
     .optional()
     .default("weekly"),
+  recurrenceCustomUnit: z
+    .enum(["daily", "weekly", "monthly", "yearly"])
+    .optional()
+    .default("monthly"),
+  recurrenceCustomDayOfWeek: z.coerce.number().int().min(0).max(6).optional(),
+  recurrenceCustomDayOfMonth: z.coerce.number().int().min(1).max(31).optional(),
+  recurrenceCustomMonth: z.coerce.number().int().min(1).max(12).optional(),
+  recurrenceCustomInterval: z.coerce.number().int().min(1).max(365).optional().default(1),
+  recurrenceCustomTime: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/, "Horário da recorrência inválido.")
+    .optional()
+    .or(z.literal("")),
   recurrenceEndType: z
     .enum(["until_date", "no_end"])
     .optional()
